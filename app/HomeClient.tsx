@@ -100,29 +100,27 @@ export default function HomeClient({ hero, productos }: { hero: Producto; produc
         </div>
       )}
 
-      {/* HERO */}
-      <div className="hero-wrap">
-        <video className="hero-video hero-video-desktop" src="/productos/banner_pc_proyector.mp4" autoPlay loop muted playsInline preload="auto" />
-        <video className="hero-video hero-video-mobile" src="/productos/banner_proyector.mp4" autoPlay loop muted playsInline preload="auto" />
-        <div className="hero-overlay" />
-        <div className="hero-content">
-          <div className="hero-eyebrow">Proyector HY300 · Android 11</div>
-          <h1 className="hero-title">Tu cine en casa,<br />cualquier noche</h1>
-          <p className="hero-sub">Netflix, YouTube, Magis TV y más de 4.000 apps en una pantalla gigante de hasta 130". Sin smart TV, sin cables, sin complicaciones.</p>
-          <div className="hero-ctas">
-            <a href={`/productos/${hero?.slug || "proyector-hy300-android"}`} className="cta-primary">
-              Comprar ahora — {hero?.precio || "$119.900"}
-            </a>
-            <a href="#otros" className="cta-secondary">Ver más productos</a>
-          </div>
+{/* HERO */}
+    <div className="hero-wrap">
+      <video className="hero-video hero-video-desktop" src="/productos/banner_pc_pistola.mp4" autoPlay loop muted playsInline />
+      <video className="hero-video hero-video-mobile" src="/productos/banner_pistola.mp4" autoPlay loop muted playsInline />
+      <div className="hero-overlay" />
+      <div className="hero-content">
+        <div className="hero-eyebrow">Pistola de Agua Eléctrica</div>
+        <h1 className="hero-title">Diversión sin límites,<br />en cada disparo</h1>
+        <p className="hero-sub">Luz LED, batería recargable y máxima potencia para tus batallas de agua.</p>
+        <div className="hero-ctas">
+          <a href={`/productos/${hero?.slug || "pistola-de-agua-electrica"}`} className="cta-primary">
+            Comprar ahora – {hero?.precio || "$39.900"}
+          </a>
+          <a href="#otros" className="cta-secondary">Ver más productos</a>
         </div>
         <div className="scroll-hint">
           <div className="scroll-line" />
           <span>scroll</span>
         </div>
       </div>
-
-      {/* OTROS PRODUCTOS */}
+    </div>      {/* OTROS PRODUCTOS */}
       {productos.length > 0 && (
         <section id="otros" style={{ background:"var(--bg)",padding:"64px 16px 80px" }}>
           <div style={{ maxWidth:1240,margin:"0 auto" }}>
