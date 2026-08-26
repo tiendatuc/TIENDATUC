@@ -111,7 +111,7 @@ export default function HomeClient({ hero, productos }: { hero: Producto; produc
         <p className="hero-sub">Luz LED, batería recargable y máxima potencia para tus batallas de agua.</p>
         <div className="hero-ctas">
           <a href={`/productos/${hero?.slug || "pistola-de-agua-electrica"}`} className="cta-primary">
-            Comprar ahora – {hero?.precio || "$39.900"}
+            Comprar ahora {hero?.precio || "$39.900"}
           </a>
           <a href="#otros" className="cta-secondary">Ver más productos</a>
         </div>
