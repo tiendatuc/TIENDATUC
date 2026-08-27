@@ -7,15 +7,6 @@ import NavUser from "./components/NavUser";
 export const metadata: Metadata = {
   title: "TiendaTuc - Hogar y Tecnología",
   description: "Productos para tu hogar y entretenimiento. Envío a todo Argentina.",
-icons: {
-    icon: [
-      { url: "/favicon.ico", sizes: "any" },
-      { url: "/icon.png", type: "image/png" },
-    ],
-    apple: [
-      { url: "/icon.png", sizes: "180x180", type: "image/png" },
-    ],
-  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -23,6 +14,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        {/* Forzamos la actualización del favicon en navegadores y móviles */}
+        <link rel="icon" href="/favicon.ico?v=2" sizes="any" />
+        <link rel="icon" href="/icon.png?v=2" type="image/png" />
+        <link rel="apple-touch-icon" href="/icon.png?v=2" />
       </head>
       <body>
         <style>{`
@@ -158,11 +153,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </p>
             </div>
             <span className="t-xs">© 2026 TiendaTuc</span>
-<div style={{ display:"flex", gap:16, marginTop:8 }}>
-  <a href="/privacidad" style={{ color:"var(--text-3)", fontSize:12, textDecoration:"none" }}>Privacidad</a>
-  <a href="/terminos" style={{ color:"var(--text-3)", fontSize:12, textDecoration:"none" }}>Términos</a>
-  <a href="/devoluciones" style={{ color:"var(--text-3)", fontSize:12, textDecoration:"none" }}>Devoluciones</a>
-</div>
+            <div style={{ display:"flex", gap:16, marginTop:8 }}>
+              <a href="/privacidad" style={{ color:"var(--text-3)", fontSize:12, textDecoration:"none" }}>Privacidad</a>
+              <a href="/terminos" style={{ color:"var(--text-3)", fontSize:12, textDecoration:"none" }}>Términos</a>
+              <a href="/devoluciones" style={{ color:"var(--text-3)", fontSize:12, textDecoration:"none" }}>Devoluciones</a>
+            </div>
           </div>
         </footer>
 
