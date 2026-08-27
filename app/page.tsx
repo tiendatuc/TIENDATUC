@@ -27,10 +27,11 @@ export default async function Home() {
     imagen: p.imagenes?.[0] || "",
   }));
 
-  // Producto hero = el primero (proyector)
-  const hero = productosNormalizados[0];
-  // Resto = los demás
-  const resto = productosNormalizados.slice(1);
+// Buscar la pistola de agua como producto hero
+  const hero = productosNormalizados.find(p => p.slug === "pistola-de-agua-electrica") || productosNormalizados[0];
+
+  // El resto de los productos (excluyendo el que se muestra en el hero)
+  const resto = productosNormalizados.filter(p => p.id !== hero?.id);
 
   return <HomeClient hero={hero} productos={resto} />;
 }
