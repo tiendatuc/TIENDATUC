@@ -141,14 +141,14 @@ if (data.user) {
         {vista === "perfil" && usuario && (
           <div>
             {mensaje && (
-              <div style={{ background:"rgba(76,175,138,0.08)", border:"1px solid rgba(76,175,138,0.2)", borderRadius:8, padding:"12px 16px", marginBottom:20 }}>
+              <div style={{ background:"var(--green-soft)", border:"1px solid color-mix(in srgb, var(--green) 25%, transparent)", borderRadius:8, padding:"12px 16px", marginBottom:20 }}>
                 <span className="t-sm" style={{ color:"var(--green)" }}>✓ {mensaje}</span>
               </div>
             )}
 
             {/* Avatar + nombre */}
             <div style={{ textAlign:"center", marginBottom:28 }}>
-              <div style={{ width:80, height:80, borderRadius:"50%", background:"linear-gradient(135deg, var(--copper), var(--gold))", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 14px", fontSize:26, fontWeight:800, color:"#0f0f0f", boxShadow:"0 8px 24px rgba(212,132,90,0.3)" }}>
+              <div style={{ width:80, height:80, borderRadius:"50%", background:"var(--copper)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 14px", fontSize:26, fontWeight:800, color:"var(--on-accent)" }}>
                 {iniciales}
               </div>
               <h2 style={{ marginBottom:4 }}>{perfil?.nombre || "Mi cuenta"}</h2>
@@ -186,9 +186,11 @@ if (data.user) {
             <div style={{ background:"var(--bg-2)", border:"1px solid var(--border)", borderRadius:12, padding:20, marginBottom:20 }}>
               <div className="t-label" style={{ marginBottom:16 }}>Mis pedidos</div>
               <div style={{ textAlign:"center", padding:"24px 0" }}>
-                <div style={{ fontSize:36, marginBottom:10 }}>📦</div>
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" style={{ margin:"0 auto 12px" }}>
+                  <path d="M21 8 12 3 3 8v8l9 5 9-5V8Z" /><path d="m3 8 9 5 9-5" /><path d="M12 13v8" />
+                </svg>
                 <p className="t-sm" style={{ marginBottom:12 }}>No tenés pedidos todavía</p>
-                <a href="/" style={{ display:"inline-flex", alignItems:"center", gap:6, background:"var(--copper)", color:"#0f0f0f", padding:"10px 20px", borderRadius:6, fontSize:12, fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase" }}>
+                <a href="/" style={{ display:"inline-flex", alignItems:"center", gap:6, background:"var(--copper)", color:"var(--on-accent)", padding:"10px 20px", borderRadius:6, fontSize:12, fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase" }}>
                   Ver productos →
                 </a>
               </div>
@@ -214,7 +216,7 @@ if (data.user) {
             </div>
 
             {error && (
-              <div style={{ background:"rgba(224,85,85,0.08)", border:"1px solid rgba(224,85,85,0.2)", borderRadius:8, padding:"12px 16px", marginBottom:16 }}>
+              <div style={{ background:"var(--red-soft)", border:"1px solid color-mix(in srgb, var(--red) 25%, transparent)", borderRadius:8, padding:"12px 16px", marginBottom:16 }}>
                 <span className="t-sm" style={{ color:"var(--red)" }}>{error}</span>
               </div>
             )}
@@ -238,7 +240,7 @@ if (data.user) {
             </div>
 
             <button onClick={handleGuardarPerfil} disabled={enviando}
-              style={{ width:"100%", background:"var(--copper)", color:"#0f0f0f", border:"none", borderRadius:10, padding:15, fontSize:13, fontWeight:700, cursor:enviando?"not-allowed":"pointer", fontFamily:"var(--font-body)", letterSpacing:"0.08em", textTransform:"uppercase", opacity:enviando?0.7:1 }}>
+              style={{ width:"100%", background:"var(--copper)", color:"var(--on-accent)", border:"none", borderRadius:10, padding:15, fontSize:13, fontWeight:700, cursor:enviando?"not-allowed":"pointer", fontFamily:"var(--font-body)", letterSpacing:"0.08em", textTransform:"uppercase", opacity:enviando?0.7:1 }}>
               {enviando ? "Guardando..." : "Guardar cambios"}
             </button>
           </div>
@@ -249,7 +251,7 @@ if (data.user) {
           <div>
             <div style={{ textAlign:"center", marginBottom:32 }}>
               <div style={{ width:56, height:56, borderRadius:"50%", background:"var(--bg-2)", border:"1px solid var(--border-2)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px" }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(232,228,224,0.5)" strokeWidth="1.5" strokeLinecap="round">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" strokeWidth="1.5" strokeLinecap="round">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
                 </svg>
               </div>
@@ -258,7 +260,7 @@ if (data.user) {
             </div>
 
             {error && (
-              <div style={{ background:"rgba(224,85,85,0.08)", border:"1px solid rgba(224,85,85,0.2)", borderRadius:8, padding:"12px 16px", marginBottom:16 }}>
+              <div style={{ background:"var(--red-soft)", border:"1px solid color-mix(in srgb, var(--red) 25%, transparent)", borderRadius:8, padding:"12px 16px", marginBottom:16 }}>
                 <span className="t-sm" style={{ color:"var(--red)" }}>{error}</span>
               </div>
             )}
@@ -284,7 +286,7 @@ if (data.user) {
             </div>
 
             <button onClick={handleLogin} disabled={enviando}
-              style={{ width:"100%", background:"var(--copper)", color:"#0f0f0f", border:"none", borderRadius:10, padding:15, fontSize:13, fontWeight:700, cursor:enviando?"not-allowed":"pointer", fontFamily:"var(--font-body)", letterSpacing:"0.08em", textTransform:"uppercase", opacity:enviando?0.7:1, marginBottom:12 }}>
+              style={{ width:"100%", background:"var(--copper)", color:"var(--on-accent)", border:"none", borderRadius:10, padding:15, fontSize:13, fontWeight:700, cursor:enviando?"not-allowed":"pointer", fontFamily:"var(--font-body)", letterSpacing:"0.08em", textTransform:"uppercase", opacity:enviando?0.7:1, marginBottom:12 }}>
               {enviando ? "Ingresando..." : "Iniciar sesión"}
             </button>
 
@@ -315,7 +317,7 @@ if (data.user) {
           <div>
             <div style={{ textAlign:"center", marginBottom:32 }}>
               <div style={{ width:56, height:56, borderRadius:"50%", background:"var(--bg-2)", border:"1px solid var(--border-2)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px" }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(232,228,224,0.5)" strokeWidth="1.5" strokeLinecap="round">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" strokeWidth="1.5" strokeLinecap="round">
                   <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>
                 </svg>
               </div>
@@ -324,7 +326,7 @@ if (data.user) {
             </div>
 
             {error && (
-              <div style={{ background:"rgba(224,85,85,0.08)", border:"1px solid rgba(224,85,85,0.2)", borderRadius:8, padding:"12px 16px", marginBottom:16 }}>
+              <div style={{ background:"var(--red-soft)", border:"1px solid color-mix(in srgb, var(--red) 25%, transparent)", borderRadius:8, padding:"12px 16px", marginBottom:16 }}>
                 <span className="t-sm" style={{ color:"var(--red)" }}>{error}</span>
               </div>
             )}
@@ -347,7 +349,7 @@ if (data.user) {
             </div>
 
             <button onClick={handleRegistro} disabled={enviando}
-              style={{ width:"100%", background:"var(--copper)", color:"#0f0f0f", border:"none", borderRadius:10, padding:15, fontSize:13, fontWeight:700, cursor:enviando?"not-allowed":"pointer", fontFamily:"var(--font-body)", letterSpacing:"0.08em", textTransform:"uppercase", opacity:enviando?0.7:1, marginBottom:12 }}>
+              style={{ width:"100%", background:"var(--copper)", color:"var(--on-accent)", border:"none", borderRadius:10, padding:15, fontSize:13, fontWeight:700, cursor:enviando?"not-allowed":"pointer", fontFamily:"var(--font-body)", letterSpacing:"0.08em", textTransform:"uppercase", opacity:enviando?0.7:1, marginBottom:12 }}>
               {enviando ? "Creando cuenta..." : "Crear cuenta"}
             </button>
 

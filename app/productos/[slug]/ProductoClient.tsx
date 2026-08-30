@@ -43,7 +43,7 @@ type Producto = {
 export default function ProductoClient({ producto }: { producto: Producto }) {
   if (!producto) {
     return (
-      <div style={{ padding: "80px 20px", textAlign: "center", color: "#fff", background: "var(--bg)", minHeight: "60vh" }}>
+      <div style={{ padding: "80px 20px", textAlign: "center", color: "var(--text)", background: "var(--bg)", minHeight: "60vh" }}>
         <h2>Producto no encontrado</h2>
         <a href="/" style={{ display: "inline-block", marginTop: 20, color: "var(--copper)", textDecoration: "underline" }}>
           ← Volver a la tienda
@@ -125,28 +125,36 @@ export default function ProductoClient({ producto }: { producto: Producto }) {
       <style>{`
         @keyframes slideDown{0%{transform:translateX(-50%) translateY(-30px);opacity:0}12%{transform:translateX(-50%) translateY(0);opacity:1}80%{transform:translateX(-50%) translateY(0);opacity:1}100%{transform:translateX(-50%) translateY(-30px);opacity:0}}
         @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-        .gallery-main{width:100%;aspect-ratio:1/1;background:var(--bg-2);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;margin-bottom:10px;}
+        .gallery-main{flex:1;min-width:0;aspect-ratio:1/1;background:var(--bg-2);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;}
         .gallery-main img{width:100%;height:100%;object-fit:cover;}
-        .thumbs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
-        .thumb{aspect-ratio:1/1;background:var(--bg-2);border-radius:8px;overflow:hidden;cursor:pointer;transition:border-color .15s;}
+        .thumbs-col{display:flex;flex-direction:column;gap:8px;width:64px;flex-shrink:0;max-height:460px;overflow-y:auto;}
+        .thumb{aspect-ratio:1/1;width:64px;flex-shrink:0;background:var(--bg-2);border-radius:8px;overflow:hidden;cursor:pointer;transition:border-color .15s;}
         .thumb img{width:100%;height:100%;object-fit:contain;padding:4px;}
+        .pack-chip{min-width:52px;padding:10px 14px;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;position:relative;background:transparent;}
+        .buybox-btn-primary{width:100%;background:var(--gold);color:var(--on-gold);border:none;border-radius:8px;padding:16px;font-size:14px;font-weight:800;letter-spacing:0.04em;cursor:pointer;}
+        .buybox-btn-secondary{width:100%;background:transparent;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:14px;font-size:14px;font-weight:700;cursor:pointer;}
         .feat-block{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:24px;background:var(--bg-2);}
         .feat-block.rev{direction:rtl;}
         .feat-block.rev > *{direction:ltr;}
         .feat-media{aspect-ratio:16/9;overflow:hidden;background:var(--bg);}
         .feat-media img, .feat-media video{width:100%;height:100%;object-fit:cover;display:block;}
         .feat-copy{padding:32px 28px;display:flex;flex-direction:column;justify-content:center;}
+        @media(max-width:960px){
+          .ml-hero{grid-template-columns:1fr 1fr!important;}
+          .buybox-col{grid-column:1 / -1;position:static!important;}
+        }
         @media(max-width:640px){
-          .hero-grid{grid-template-columns:1fr!important;gap:0!important;overflow:hidden!important;}
+          .ml-hero{grid-template-columns:1fr!important;gap:20px!important;overflow:hidden!important;}
           .gallery-wrap{padding:0 12px;width:100%;box-sizing:border-box;}
-          .info-col{padding-top:20px!important;width:100%!important;box-sizing:border-box!important;}
+          .info-col{width:100%!important;box-sizing:border-box!important;}
+          .buybox-col{grid-column:auto!important;}
           .feat-block{grid-template-columns:1fr!important;}
         }
       `}</style>
 
       {toast && (
-        <div style={{ position: "fixed", top: 72, left: "50%", zIndex: 9999, background: "var(--bg-2)", border: "1px solid rgba(76,175,138,0.3)", borderRadius: 12, padding: "14px 22px", display: "flex", alignItems: "center", justifyContent: "center", gap: 12, boxShadow: "0 12px 40px rgba(0,0,0,0.6)", animation: "slideDown 2.2s ease forwards", whiteSpace: "nowrap", pointerEvents: "none" }}>
-          <div style={{ width: 30, height: 30, borderRadius: "50%", background: "var(--green)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#0f0f0f", flexShrink: 0, fontSize: 14 }}>✓</div>
+        <div style={{ position: "fixed", top: "calc(var(--hd-h, 58px) + 14px)", left: "50%", zIndex: 9999, background: "var(--bg-2)", border: "1px solid color-mix(in srgb, var(--green) 35%, transparent)", borderRadius: 12, padding: "14px 22px", display: "flex", alignItems: "center", justifyContent: "center", gap: 12, boxShadow: "var(--toast-shadow)", animation: "slideDown 2.2s ease forwards", whiteSpace: "nowrap", pointerEvents: "none" }}>
+          <div style={{ width: 30, height: 30, borderRadius: "50%", background: "var(--green)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "var(--on-green)", flexShrink: 0, fontSize: 14 }}>✓</div>
           <div>
             <div style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--text)", marginBottom: 2 }}>¡Agregado al carrito!</div>
             <div className="t-xs">Revisá tu carrito antes de comprar</div>
@@ -159,118 +167,140 @@ export default function ProductoClient({ producto }: { producto: Producto }) {
           <a href="/" className="t-xs" style={{ display: "inline-flex", alignItems: "center", gap: 6, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 20, color: "var(--text-3)" }}>← Volver a productos</a>
         </div>
 
-        {/* SECCIÓN HERO (FOTOS Y COMPRA) */}
-        <div className="section-wrap" style={{ maxWidth: 1100, margin: "0 auto", padding: "0 16px" }}>
-          <div className="hero-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, alignItems: "start" }}>
-            
-            <div className="gallery-wrap">
-              <div className="gallery-main">
-                <img src={imagenes[imgActiva]} alt={producto.nombre} />
-              </div>
-              <div className="thumbs">
+        {/* SECCIÓN HERO (FOTOS, INFO Y COMPRA — estilo marketplace) */}
+        <div className="section-wrap" style={{ maxWidth: 1200, margin: "0 auto", padding: "0 16px" }}>
+          <div className="ml-hero" style={{ display: "grid", gridTemplateColumns: "minmax(320px, 1fr) minmax(260px, 1.1fr) 300px", gap: 32, alignItems: "start" }}>
+
+            {/* Columna 1: galería (thumbs verticales + imagen principal) */}
+            <div className="gallery-wrap" style={{ display: "flex", gap: 12 }}>
+              <div className="thumbs-col">
                 {imagenes.map((img, i) => (
                   <div key={i} className="thumb" onClick={() => setImgActiva(i)} style={{ border: `2px solid ${i === imgActiva ? "var(--copper)" : "var(--border)"}` }}>
                     <img src={img} alt="" />
                   </div>
                 ))}
               </div>
+              <div className="gallery-main">
+                <img src={imagenes[imgActiva]} alt={producto.nombre} />
+              </div>
             </div>
 
-            <div className="info-col" style={{ display: "flex", flexDirection: "column" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, color: "#00b67a", fontSize: 13, fontWeight: 600 }}>
+            {/* Columna 2: información del producto */}
+            <div className="info-col" style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, color: "var(--green)", fontSize: 13, fontWeight: 600 }}>
                 <span>★★★★★</span>
                 <span style={{ color: "var(--text-2)" }}>
                   <strong>{producto.rating || 4.86}</strong> | {producto.totalResenas || 120} Reseñas Verificadas
                 </span>
               </div>
 
-              <h1 style={{ fontSize: "clamp(22px, 4vw, 30px)", fontWeight: 800, marginBottom: 12, lineHeight: 1.2 }}>
+              <h1 style={{ fontSize: "clamp(22px, 4vw, 28px)", fontWeight: 800, marginBottom: 12, lineHeight: 1.2 }}>
                 {producto.nombre}
               </h1>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                <span style={{ fontSize: "clamp(26px, 6vw, 34px)", fontWeight: 800, color: "var(--text)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+                <span style={{ fontSize: "clamp(24px, 5vw, 30px)", fontWeight: 800, color: "var(--text)" }}>
                   {formatARS(precioFinalCalculado)}
                 </span>
                 {activePack?.precioAnteriorTotal && (
-                  <span style={{ fontSize: 18, color: "#777", textDecoration: "line-through" }}>
+                  <span style={{ fontSize: 16, color: "var(--text-3)", textDecoration: "line-through" }}>
                     {formatARS(activePack.precioAnteriorTotal)}
                   </span>
                 )}
                 {activePack?.descuento && (
-                  <span style={{ background: "#000", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 8px", borderRadius: 4 }}>
+                  <span style={{ background: "var(--gold)", color: "var(--on-gold)", fontSize: 11, fontWeight: 800, padding: "3px 8px", borderRadius: 4 }}>
                     {activePack.descuento}
                   </span>
                 )}
               </div>
 
-              <p style={{ fontSize: 14, color: "var(--text-2)", marginBottom: 14, lineHeight: 1.5 }}>
+              <p style={{ fontSize: 14, color: "var(--text-2)", marginBottom: 20, lineHeight: 1.5 }}>
                 {producto.descripcion}
               </p>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-                <div style={{ width: 8, height: 8, background: "#10b981", borderRadius: "50%", animation: "blink 1.4s ease infinite" }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#10b981" }}>En Stock · Listo para Enviar</span>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
-                {packs.map((pack) => {
-                  const isSelected = packSeleccionado === pack.id;
-                  return (
-                    <div
-                      key={pack.id}
-                      onClick={() => setPackSeleccionado(pack.id)}
-                      style={{
-                        border: `2px solid ${isSelected ? "var(--text)" : "var(--border)"}`,
-                        borderRadius: 12,
-                        padding: 14,
-                        background: isSelected ? "var(--bg-2)" : "transparent",
-                        cursor: "pointer",
-                        transition: "all 0.2s ease",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                          <input
-                            type="radio"
-                            name="pack"
-                            checked={isSelected}
-                            onChange={() => setPackSeleccionado(pack.id)}
-                            style={{ marginTop: 3, accentColor: "#000" }}
-                          />
-                          <div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <span style={{ fontWeight: 800, fontSize: 15 }}>{pack.titulo}</span>
-                              <span style={{ background: pack.destacado ? "#ef4444" : "#e5e5e5", color: pack.destacado ? "#fff" : "#111", fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 4 }}>
-                                {pack.descuento}
-                              </span>
-                            </div>
-                            {pack.envioGratis && <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>Incluye ENVÍO GRATIS</p>}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <span style={{ fontWeight: 800, fontSize: 15, display: "block" }}>{formatARS(pack.precioTotal)}</span>
-                          <span style={{ fontSize: 12, color: "#888", textDecoration: "line-through" }}>{formatARS(pack.precioAnteriorTotal)}</span>
-                        </div>
+              {/* Selector de packs, estilo variante de marketplace */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>
+                  Cantidad: <span style={{ fontWeight: 400, color: "var(--text-2)" }}>{activePack?.titulo}</span>
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+                  {packs.map((pack) => {
+                    const isSelected = packSeleccionado === pack.id;
+                    return (
+                      <div key={pack.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                        {pack.destacado && (
+                          <span style={{ background: "var(--red)", color: "#fff", fontSize: 8, fontWeight: 800, padding: "2px 5px", borderRadius: 4, whiteSpace: "nowrap" }}>
+                            MÁS VENDIDO
+                          </span>
+                        )}
+                        <button
+                          className="pack-chip"
+                          onClick={() => setPackSeleccionado(pack.id)}
+                          style={{ border: `2px solid ${isSelected ? "var(--text)" : "var(--border)"}`, background: isSelected ? "var(--bg-2)" : "transparent", color: "var(--text)" }}
+                        >
+                          {pack.cantidad}
+                        </button>
                       </div>
+                    );
+                  })}
+                </div>
+
+                {activePack && (
+                  <div style={{ marginTop: 12, padding: 12, background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 13, fontWeight: 700 }}>{activePack.titulo}</span>
+                      <span style={{ background: activePack.destacado ? "var(--red)" : "var(--bg-3)", color: activePack.destacado ? "#fff" : "var(--text)", fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 4 }}>
+                        {activePack.descuento}
+                      </span>
                     </div>
-                  );
-                })}
+                    {activePack.regalos && activePack.regalos.length > 0 && (
+                      <div style={{ marginTop: 6 }}>
+                        {activePack.regalos.map((r, i) => (
+                          <p key={i} style={{ fontSize: 12, color: "var(--green)", fontWeight: 600 }}>{r}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              <button
-                onClick={handleComprar}
-                style={{ width: "100%", background: "#000", color: "#fff", border: "none", borderRadius: 8, padding: "18px", fontSize: 14, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", marginBottom: 12 }}
-              >
-                AGREGAR AL CARRITO
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 8, height: 8, background: "var(--green)", borderRadius: "50%", animation: "blink 1.4s ease infinite" }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--green)" }}>En Stock · Listo para Enviar</span>
+              </div>
+            </div>
+
+            {/* Columna 3: caja de compra, estilo marketplace */}
+            <div className="buybox-col" style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 20, position: "sticky", top: 90, background: "var(--bg)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                <div style={{ width: 8, height: 8, background: "var(--green)", borderRadius: "50%", flexShrink: 0 }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--green)" }}>Stock disponible</span>
+              </div>
+
+              <button onClick={handleComprar} className="buybox-btn-primary" style={{ marginBottom: 10 }}>
+                Comprar ahora
+              </button>
+              <button onClick={handleAgregar} className="buybox-btn-secondary" style={{ marginBottom: 18 }}>
+                Agregar al carrito
               </button>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, textAlign: "center", paddingTop: 14, borderTop: "1px solid var(--border)", fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>
-                <div>🚚 Envío Gratis</div>
-                <div>🛡️ Garantía Oficial</div>
-                <div>⚙️ Soporte Directo</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingTop: 16, borderTop: "1px solid var(--border)", fontSize: 13, color: "var(--text-2)" }}>
+                {(activePack?.envioGratis || producto.envioGratis) && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span>🚚</span><span>Envío gratis</span>
+                  </div>
+                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>🛡️</span><span>Garantía de 6 meses contra defectos de fábrica</span>
+                </div>
+                <a href="/devoluciones" style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-2)", textDecoration: "none" }}>
+                  <span>↩️</span><span style={{ textDecoration: "underline" }}>Devolución gratis · 30 días</span>
+                </a>
               </div>
 
+              <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)", fontSize: 12, color: "var(--text-3)" }}>
+                Vendido y enviado por <strong style={{ color: "var(--text)" }}>TiendaTuc</strong>
+              </div>
             </div>
           </div>
         </div>

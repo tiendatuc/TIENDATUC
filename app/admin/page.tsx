@@ -1,12 +1,19 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+
+import { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../lib/supabase";
+import ThemeToggle from "../components/ThemeToggle";
+import "./admin.css";
 
 const ADMIN_PASSWORD = "tiendatuc2026";
+const AUTH_KEY = "tiendatuc-admin";
 
-type Feature = { tipo: "video" | "imagen"; archivo: string; titulo: string; desc: string; };
-type Spec = [string, string];
-type Pack = { cantidad: number; precio: string; descuento: string; popular?: boolean };
+type Feature = {
+  tipo: "video" | "imagen";
+  archivo: string;
+  titulo: string;
+  desc: string;
+};
 
 type Producto = {
   id?: number;
@@ -24,443 +31,957 @@ type Producto = {
   imagenes: string[];
   features: Feature[];
   videos: { video: string; titulo: string; desc: string }[];
-  packs: Pack[];
-  specs: Spec[];
-  comparativa: string[];
+  packs: unknown;
+  specs: unknown;
+  comparativa: unknown;
   activo: boolean;
 };
 
 const VACIO: Producto = {
-  slug: "", nombre: "", descripcion: "",
-  precio: "$39.900", precio_num: 39900, precio_anterior: "$49.875", descuento: 20, ahorro: "$9.975", cuotas: "3 cuotas sin interés",
-  envio_gratis: true, stock: 10,
+  slug: "",
+  nombre: "",
+  descripcion: "",
+  precio: "",
+  precio_num: 0,
+  precio_anterior: "",
+  descuento: 0,
+  ahorro: "",
+  cuotas: "3 y 6 cuotas sin interés",
+  envio_gratis: true,
+  stock: 10,
   imagenes: [],
   features: [],
   videos: [],
-  packs: [
-    { cantidad: 1, precio: "$39.900", descuento: "20%" },
-    { cantidad: 2, precio: "$69.900", descuento: "30%", popular: true },
-    { cantidad: 3, precio: "$94.900", descuento: "40%" }
-  ],
-  specs: [["", ""]], comparativa: [""], activo: true,
+  packs: [],
+  specs: [],
+  comparativa: [],
+  activo: true,
 };
+
+const aNumero = (v: unknown) => Number(String(v ?? "").replace(/\D/g, "")) || 0;
+const fmtARS = (n: number) =>
+  n > 0 ? "$" + Math.round(n).toLocaleString("es-AR") : "";
+const pctOff = (actual: number, anterior: number) =>
+  anterior > actual && actual > 0 ? Math.round((1 - actual / anterior) * 100) : 0;
+
+function slugify(s: string) {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
+}
+
+function frasesDe(texto: string) {
+  return String(texto || "")
+    .split(/\.\s+/)
+    .map((f) => f.trim().replace(/\.$/, ""))
+    .filter(Boolean);
+}
+
+function safeName(name: string) {
+  return name.replace(/[^\w.\-]+/g, "_").slice(0, 80);
+}
+
+function moveItem<T>(arr: T[], from: number, to: number) {
+  const next = [...arr];
+  const [item] = next.splice(from, 1);
+  next.splice(to, 0, item);
+  return next;
+}
+
+function normalizar(prod: any): Producto {
+  const features: Feature[] = (prod.features || []).map((f: any) => ({
+    tipo: f.tipo || (f.video ? "video" : "imagen"),
+    archivo: f.archivo || f.video || f.imagen || "",
+    titulo: f.titulo || "",
+    desc: f.desc || f.descripcion || "",
+  }));
+  return {
+    ...VACIO,
+    ...prod,
+    precio: prod.precio || fmtARS(prod.precio_num) || "",
+    precio_num: aNumero(prod.precio) || Number(prod.precio_num) || 0,
+    precio_anterior: prod.precio_anterior || "",
+    imagenes: Array.isArray(prod.imagenes) ? prod.imagenes.filter(Boolean) : [],
+    features,
+    videos: prod.videos || [],
+    packs: prod.packs ?? [],
+    specs: prod.specs ?? [],
+    comparativa: prod.comparativa ?? [],
+    activo: prod.activo !== false,
+  };
+}
 
 export default function AdminPage() {
   const [auth, setAuth] = useState(false);
+  const [sesionLista, setSesionLista] = useState(false);
   const [pass, setPass] = useState("");
   const [passErr, setPassErr] = useState("");
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [cargando, setCargando] = useState(false);
   const [vista, setVista] = useState<"lista" | "editor">("lista");
   const [p, setP] = useState<Producto>(VACIO);
-  const [tab, setTab] = useState<"general" | "precio" | "packs" | "imagenes" | "secciones" | "specs" | "comparativa">("general");
-  const [previewTab, setPreviewTab] = useState<"desktop" | "mobile">("desktop");
+  const [slugManual, setSlugManual] = useState(false);
+  const [editSlug, setEditSlug] = useState(false);
   const [guardando, setGuardando] = useState(false);
-  const [subiendoBloque, setSubiendoBloque] = useState<number | null>(null);
-  const [msg, setMsg] = useState("");
-  const [uploadingImg, setUploadingImg] = useState(false);
-  
-  const imgInputRef = useRef<HTMLInputElement>(null);
-  const fileInputBloqueRef = useRef<HTMLInputElement>(null);
-  const bloqueIndexRef = useRef<number | null>(null);
+  const [msg, setMsg] = useState<{ tipo: "ok" | "err"; texto: string } | null>(null);
+  const [busqueda, setBusqueda] = useState("");
+  const [uploadingImg, setUploadingImg] = useState("");
+  const [uploadingVid, setUploadingVid] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
-  useEffect(() => { if (auth) cargar(); }, [auth]);
+  const imgInputRef = useRef<HTMLInputElement>(null);
+  const vidInputRef = useRef<HTMLInputElement>(null);
+  const snapshotRef = useRef("");
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(AUTH_KEY) === "1") setAuth(true);
+    } catch {
+      /* ignore */
+    }
+    setSesionLista(true);
+  }, []);
+
+  useEffect(() => {
+    if (auth) cargar();
+  }, [auth]);
 
   const cargar = async () => {
+    setCargando(true);
     const { data } = await supabase.from("productos").select("*").order("id");
-    if (data) setProductos(data);
+    if (data) setProductos(data.map(normalizar));
+    setCargando(false);
   };
 
-  const set = useCallback((field: keyof Producto, val: any) =>
-    setP(prev => ({ ...prev, [field]: val })), []);
+  const entrar = () => {
+    if (pass === ADMIN_PASSWORD) {
+      setAuth(true);
+      try {
+        sessionStorage.setItem(AUTH_KEY, "1");
+      } catch {
+        /* ignore */
+      }
+    } else {
+      setPassErr("Contraseña incorrecta");
+    }
+  };
+
+  const salir = () => {
+    setAuth(false);
+    setVista("lista");
+    try {
+      sessionStorage.removeItem(AUTH_KEY);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const patch = (parcial: Partial<Producto>) =>
+    setP((prev) => ({ ...prev, ...parcial }));
+
+  const abrirNuevo = () => {
+    setP(VACIO);
+    setSlugManual(false);
+    setEditSlug(false);
+    snapshotRef.current = JSON.stringify(VACIO);
+    setMsg(null);
+    setVista("editor");
+  };
+
+  const abrirEditar = (prod: Producto) => {
+    const n = normalizar(prod);
+    setP(n);
+    setSlugManual(true);
+    setEditSlug(false);
+    snapshotRef.current = JSON.stringify(n);
+    setMsg(null);
+    setVista("editor");
+  };
+
+  const sucio = JSON.stringify(p) !== snapshotRef.current;
+
+  const volver = () => {
+    if (sucio && !confirm("Hay cambios sin guardar. ¿Salir igual?")) return;
+    setVista("lista");
+    setMsg(null);
+  };
+
+  const onNombre = (nombre: string) => {
+    if (slugManual) patch({ nombre });
+    else patch({ nombre, slug: slugify(nombre) });
+  };
+
+  const precioAntNum = aNumero(p.precio_anterior);
+  const descuento = pctOff(p.precio_num, precioAntNum);
+  const ahorro = precioAntNum > p.precio_num ? precioAntNum - p.precio_num : 0;
+  const frases = frasesDe(p.descripcion);
+  const otrosFeatures = p.features.filter((f) => f.tipo !== "video");
+
+  const checklist = useMemo(
+    () => [
+      { ok: !!p.nombre.trim(), label: "Nombre del producto" },
+      { ok: p.precio_num > 0, label: "Precio de venta" },
+      { ok: p.imagenes.length > 0, label: "Al menos una foto" },
+    ],
+    [p.nombre, p.precio_num, p.imagenes.length]
+  );
+  const listo = checklist.every((c) => c.ok);
+
+  const filtrados = productos.filter((prod) => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      prod.nombre.toLowerCase().includes(q) ||
+      prod.slug.toLowerCase().includes(q)
+    );
+  });
 
   const uploadFile = async (file: File, path: string) => {
-    const { data, error } = await supabase.storage.from("productos").upload(path, file, { upsert: true });
+    const { error } = await supabase.storage
+      .from("productos")
+      .upload(path, file, { upsert: true });
     if (error) throw error;
     const { data: url } = supabase.storage.from("productos").getPublicUrl(path);
     return url.publicUrl;
   };
 
-  const handleUploadImagenes = async (files: FileList) => {
-    setUploadingImg(true);
+  const handleUploadImagenes = async (files: FileList | File[]) => {
+    const list = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (!list.length) return;
+    const folder = p.slug || "nuevo";
     try {
       const urls: string[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
-        const path = `${p.slug || "nuevo"}/${Date.now()}_${f.name}`;
-        const url = await uploadFile(f, path);
-        urls.push(url);
+      for (let i = 0; i < list.length; i++) {
+        const f = list[i];
+        setUploadingImg(`Subiendo ${i + 1} de ${list.length}…`);
+        const path = `${folder}/${Date.now()}_${safeName(f.name)}`;
+        urls.push(await uploadFile(f, path));
       }
-      set("imagenes", [...p.imagenes, ...urls]);
-    } catch (e: any) { setMsg("Error subiendo imagen: " + e.message); }
-    setUploadingImg(false);
+      setP((prev) => ({ ...prev, imagenes: [...prev.imagenes, ...urls] }));
+    } catch (e: any) {
+      setMsg({ tipo: "err", texto: "No se pudo subir la foto: " + e.message });
+    }
+    setUploadingImg("");
   };
 
-  const handleUploadArchivoBloque = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    const index = bloqueIndexRef.current;
-    if (!file || index === null) return;
-
-    setSubiendoBloque(index);
+  const handleUploadVideo = async (file: File) => {
+    setUploadingVid(true);
     try {
-      const path = `secciones/${p.slug || "nuevo"}/${Date.now()}_${file.name}`;
+      const folder = p.slug || "nuevo";
+      const path = `videos/${folder}/${Date.now()}_${safeName(file.name)}`;
       const url = await uploadFile(file, path);
-      
-      const arr = [...p.features];
-      arr[index] = { ...arr[index], archivo: url };
-      set("features", arr);
-    } catch (err: any) {
-      setMsg("Error subiendo archivo: " + err.message);
+      setP((prev) => ({
+        ...prev,
+        features: [
+          ...prev.features,
+          { tipo: "video", archivo: url, titulo: "", desc: "" },
+        ],
+      }));
+    } catch (e: any) {
+      setMsg({ tipo: "err", texto: "No se pudo subir el video: " + e.message });
     }
-    setSubiendoBloque(null);
-    e.target.value = "";
+    setUploadingVid(false);
   };
 
   const handleGuardar = async () => {
-    if (!p.nombre || !p.slug) { setMsg("Nombre y slug son obligatorios"); return; }
-    setGuardando(true);
+    if (!p.nombre.trim()) {
+      setMsg({ tipo: "err", texto: "Ponéle un nombre al producto." });
+      return;
+    }
+    if (p.precio_num <= 0) {
+      setMsg({ tipo: "err", texto: "Ingresá el precio de venta." });
+      return;
+    }
+    if (!p.imagenes.length) {
+      setMsg({ tipo: "err", texto: "Subí al menos una foto para el catálogo." });
+      return;
+    }
 
-    const featuresGuardables = p.features
-      .filter(f => f.titulo || f.archivo)
-      .map(f => ({
-        tipo: f.tipo,
+    const slug = p.slug || slugify(p.nombre);
+    if (!slug) {
+      setMsg({ tipo: "err", texto: "El nombre no genera un enlace válido." });
+      return;
+    }
+
+    setGuardando(true);
+    setMsg(null);
+
+    const videoFeatures = p.features
+      .filter((f) => f.tipo === "video" && f.archivo)
+      .map((f) => ({
+        tipo: "video" as const,
         archivo: f.archivo,
-        video: f.tipo === "video" ? f.archivo : "",
-        imagen: f.tipo === "imagen" ? f.archivo : "",
+        video: f.archivo,
+        imagen: "",
         titulo: f.titulo,
-        desc: f.desc || ""
+        desc: f.desc || "",
       }));
 
-    const videosGuardables = featuresGuardables
-      .filter(f => f.tipo === "video")
-      .map(f => ({ video: f.archivo, titulo: f.titulo, desc: f.desc }));
-
     const data: any = {
-      ...p,
-      precio: p.precio || "$0",
-      precio_num: p.precio_num || 0,
+      slug,
+      nombre: p.nombre.trim(),
+      descripcion: p.descripcion.trim(),
+      precio: fmtARS(p.precio_num),
+      precio_num: p.precio_num,
+      precio_anterior: precioAntNum ? fmtARS(precioAntNum) : "",
+      descuento,
+      ahorro: ahorro ? fmtARS(ahorro) : "",
+      cuotas: p.cuotas.trim() || "3 y 6 cuotas sin interés",
+      envio_gratis: p.envio_gratis,
+      stock: Number(p.stock) || 0,
       imagenes: p.imagenes.filter(Boolean),
-      comparativa: p.comparativa.filter(Boolean),
-      specs: p.specs.filter(([k]) => k),
-      features: featuresGuardables,
-      videos: videosGuardables,
-      packs: p.packs,
+      features: [...videoFeatures, ...otrosFeatures],
+      videos: videoFeatures.map((f) => ({
+        video: f.archivo,
+        titulo: f.titulo,
+        desc: f.desc || "",
+      })),
+      packs: p.packs ?? [],
+      specs: p.specs ?? [],
+      comparativa: p.comparativa ?? [],
+      activo: p.activo,
     };
 
-    let { error: err } = p.id 
+    let { error: err } = p.id
       ? await supabase.from("productos").update(data).eq("id", p.id)
       : await supabase.from("productos").insert(data);
 
-    // Respaldo en caso de que falte la columna packs en la tabla
-    if (err && err.message.includes("'packs'")) {
+    if (err && /packs/i.test(err.message)) {
       delete data.packs;
-      const res = p.id 
+      const res = p.id
         ? await supabase.from("productos").update(data).eq("id", p.id)
         : await supabase.from("productos").insert(data);
       err = res.error;
     }
 
-    if (err) setMsg("Error: " + err.message);
-    else { setMsg("✓ Publicado con éxito"); await cargar(); setTimeout(() => { setVista("lista"); setMsg(""); }, 1200); }
     setGuardando(false);
+    if (err) {
+      setMsg({ tipo: "err", texto: "No se pudo guardar: " + err.message });
+      return;
+    }
+
+    snapshotRef.current = JSON.stringify({ ...p, slug });
+    setMsg({ tipo: "ok", texto: p.id ? "Cambios guardados" : "Producto publicado" });
+    await cargar();
+    setTimeout(() => {
+      setVista("lista");
+      setMsg(null);
+    }, 900);
   };
 
-  const iStyle: any = { width: "100%", background: "rgba(232,228,224,0.05)", border: "1px solid rgba(232,228,224,0.12)", borderRadius: 7, padding: "9px 11px", fontSize: 13, color: "#e8e4e0", fontFamily: "inherit", outline: "none", boxSizing: "border-box" };
-  const lStyle: any = { display: "block", fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(232,228,224,0.4)", marginBottom: 5 };
-  const tabBtn = (active: boolean) => ({ padding: "6px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer", background: active ? "#d4845a" : "transparent", color: active ? "#0f0f0f" : "rgba(232,228,224,0.5)", border: "1px solid", borderColor: active ? "#d4845a" : "rgba(232,228,224,0.12)", borderRadius: 5, fontFamily: "inherit" });
+  const toggleActivo = async (prod: Producto) => {
+    if (!prod.id) return;
+    const next = !prod.activo;
+    const { error } = await supabase
+      .from("productos")
+      .update({ activo: next })
+      .eq("id", prod.id);
+    if (error) {
+      setMsg({ tipo: "err", texto: error.message });
+      return;
+    }
+    setProductos((prev) =>
+      prev.map((x) => (x.id === prod.id ? { ...x, activo: next } : x))
+    );
+  };
 
-  if (!auth) return (
-    <div style={{ minHeight: "100vh", background: "#0f0f0f", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ width: 340, background: "#141414", border: "1px solid rgba(232,228,224,0.08)", borderRadius: 14, padding: 32 }}>
-        <div style={{ fontFamily: "'Syne',sans-serif", fontSize: 22, fontWeight: 800, color: "#e8e4e0", marginBottom: 4 }}>Admin</div>
-        <div style={{ fontSize: 13, color: "rgba(232,228,224,0.4)", marginBottom: 24 }}>TiendaTuc</div>
-        {passErr && <div style={{ background: "rgba(224,85,85,0.08)", border: "1px solid rgba(224,85,85,0.2)", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: "#e05555" }}>{passErr}</div>}
-        <label style={lStyle}>Contraseña</label>
-        <input type="password" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === "Enter" && (pass === ADMIN_PASSWORD ? setAuth(true) : setPassErr("Incorrecta"))} placeholder="••••••••" style={{ ...iStyle, marginBottom: 14 }} />
-        <button onClick={() => pass === ADMIN_PASSWORD ? setAuth(true) : setPassErr("Incorrecta")} style={{ width: "100%", background: "#d4845a", color: "#0f0f0f", border: "none", borderRadius: 8, padding: 13, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Entrar</button>
-      </div>
-    </div>
-  );
+  const borrar = async (prod: Producto) => {
+    if (!prod.id) return;
+    if (
+      !confirm(
+        `¿Eliminar “${prod.nombre}”? Deja de verse en la tienda. Esta acción no se puede deshacer.`
+      )
+    )
+      return;
+    const { error } = await supabase.from("productos").delete().eq("id", prod.id);
+    if (error) {
+      setMsg({ tipo: "err", texto: "No se pudo eliminar: " + error.message });
+      return;
+    }
+    setProductos((prev) => prev.filter((x) => x.id !== prod.id));
+  };
 
-  if (vista === "lista") return (
-    <div style={{ minHeight: "100vh", background: "#0f0f0f", padding: "32px 24px" }}>
-      <div style={{ maxWidth: 900, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
-          <div style={{ fontFamily: "'Syne',sans-serif", fontSize: 22, fontWeight: 800, color: "#e8e4e0" }}>Mis productos</div>
-          <button onClick={() => { setP(VACIO); setTab("general"); setVista("editor"); }} style={{ background: "#d4845a", color: "#0f0f0f", border: "none", borderRadius: 8, padding: "10px 22px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>+ Nuevo producto</button>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {productos.map(prod => (
-            <div key={prod.id} style={{ background: "#141414", border: "1px solid rgba(232,228,224,0.07)", borderRadius: 12, padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{ width: 54, height: 54, borderRadius: 8, overflow: "hidden", background: "#1a1a1a", flexShrink: 0 }}>
-                {prod.imagenes?.[0] && <img src={prod.imagenes[0]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "#e8e4e0" }}>{prod.nombre}</div>
-                <div style={{ fontSize: 11, color: "rgba(232,228,224,0.4)", marginTop: 2 }}>{prod.precio} · /productos/{prod.slug}</div>
-              </div>
-              <button onClick={() => {
-                const featNormalizadas = ((prod as any).features || []).map((f: any) => ({
-                  tipo: f.tipo || (f.video ? "video" : "imagen"),
-                  archivo: f.archivo || f.video || f.imagen || "",
-                  titulo: f.titulo || "",
-                  desc: f.desc || f.descripcion || ""
-                }));
-                setP({
-                  ...prod,
-                  precio: prod.precio || "$0",
-                  precio_num: prod.precio_num || 0,
-                  imagenes: prod.imagenes || [],
-                  features: featNormalizadas,
-                  packs: prod.packs || VACIO.packs,
-                  specs: prod.specs || [["", ""]],
-                  comparativa: prod.comparativa || [""],
-                });
-                setTab("general");
-                setVista("editor");
-              }} style={{ background: "rgba(212,132,90,0.1)", border: "1px solid rgba(212,132,90,0.2)", color: "#d4845a", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Editar</button>
+  if (!sesionLista) {
+    return <div className="adm-app" />;
+  }
+
+  if (!auth) {
+    return (
+      <div className="adm-app adm-login">
+        <div className="adm-login-card">
+          <h1>Publicar productos</h1>
+          <p>Entrá para cargar o editar lo que se ve en la tienda.</p>
+          {passErr && (
+            <div className="adm-msg err" style={{ marginBottom: 14 }}>
+              {passErr}
             </div>
-          ))}
+          )}
+          <label className="adm-label">Contraseña</label>
+          <input
+            className="adm-input"
+            type="password"
+            value={pass}
+            onChange={(e) => {
+              setPass(e.target.value);
+              setPassErr("");
+            }}
+            onKeyDown={(e) => e.key === "Enter" && entrar()}
+            placeholder="••••••••"
+            autoFocus
+            style={{ marginBottom: 14 }}
+          />
+          <button className="adm-btn adm-btn-primary" style={{ width: "100%", height: 44 }} onClick={entrar}>
+            Entrar
+          </button>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  if (vista === "lista") {
+    return (
+      <div className="adm-app">
+        <header className="adm-top">
+          <div className="adm-top-left">
+            <span className="adm-brand">TiendaTuc</span>
+          </div>
+          <div className="adm-top-right">
+            <ThemeToggle />
+            <button className="adm-btn adm-btn-ghost adm-btn-sm" onClick={salir}>
+              Salir
+            </button>
+          </div>
+        </header>
+
+        <div className="adm-wrap">
+          <div className="adm-hero">
+            <div>
+              <h1>Tus productos</h1>
+              <p>
+                Acá cargás lo que ven tus clientes: nombre, fotos y precio. El resto
+                de la ficha se arma solo.
+              </p>
+            </div>
+            <button className="adm-btn adm-btn-primary" onClick={abrirNuevo}>
+              + Nuevo producto
+            </button>
+          </div>
+
+          {msg && <div className={`adm-msg ${msg.tipo}`} style={{ marginBottom: 14 }}>{msg.texto}</div>}
+
+          {productos.length > 0 && (
+            <div className="adm-toolbar">
+              <div className="adm-search">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.35-4.35" />
+                </svg>
+                <input
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  placeholder="Buscar por nombre…"
+                />
+              </div>
+            </div>
+          )}
+
+          {cargando && <p className="adm-section-lead">Cargando productos…</p>}
+
+          {!cargando && productos.length === 0 && (
+            <div className="adm-empty">
+              <div style={{ fontSize: 32 }}>📦</div>
+              <h2>Todavía no hay productos</h2>
+              <p>Publicá el primero: nombre, fotos y precio. En un minuto está en la tienda.</p>
+              <button className="adm-btn adm-btn-primary" onClick={abrirNuevo}>
+                Publicar el primero
+              </button>
+            </div>
+          )}
+
+          <div className="adm-list">
+            {filtrados.map((prod) => (
+              <div key={prod.id} className="adm-row">
+                <div className="adm-row-img">
+                  {prod.imagenes[0] ? <img src={prod.imagenes[0]} alt="" /> : null}
+                </div>
+                <div className="adm-row-body">
+                  <strong>{prod.nombre || "Sin nombre"}</strong>
+                  <div className="adm-row-meta">
+                    {prod.precio || "Sin precio"}
+                    {prod.stock != null && ` · ${prod.stock} en stock`}
+                  </div>
+                </div>
+                <span className={`adm-badge ${prod.activo ? "adm-badge-on" : "adm-badge-off"}`}>
+                  {prod.activo ? "Visible" : "Oculto"}
+                </span>
+                <div className="adm-row-actions">
+                  <button
+                    className="adm-btn adm-btn-ghost adm-btn-sm"
+                    onClick={() => toggleActivo(prod)}
+                    title={prod.activo ? "Ocultar de la tienda" : "Mostrar en la tienda"}
+                  >
+                    {prod.activo ? "Ocultar" : "Mostrar"}
+                  </button>
+                  {prod.slug && (
+                    <a
+                      className="adm-btn adm-btn-ghost adm-btn-sm"
+                      href={`/productos/${prod.slug}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Ver
+                    </a>
+                  )}
+                  <button className="adm-btn adm-btn-primary adm-btn-sm" onClick={() => abrirEditar(prod)}>
+                    Editar
+                  </button>
+                  <button className="adm-btn adm-btn-danger adm-btn-sm" onClick={() => borrar(prod)}>
+                    Borrar
+                  </button>
+                </div>
+              </div>
+            ))}
+            {!cargando && productos.length > 0 && filtrados.length === 0 && (
+              <div className="adm-empty">
+                <h2>Sin resultados</h2>
+                <p>Ningún producto coincide con “{busqueda}”.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#0a0a0a", overflow: "hidden" }}>
-      <input ref={fileInputBloqueRef} type="file" accept="video/*,image/*" style={{ display: "none" }} onChange={handleUploadArchivoBloque} />
-      
-      {/* Topbar */}
-      <div style={{ height: 52, background: "#0f0f0f", borderBottom: "1px solid rgba(232,228,224,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <button onClick={() => setVista("lista")} style={{ background: "none", border: "none", color: "rgba(232,228,224,0.4)", cursor: "pointer", fontSize: 20 }}>←</button>
-          <span style={{ fontFamily: "'Syne',sans-serif", fontSize: 15, fontWeight: 700, color: "#e8e4e0" }}>{p.id ? "Editar producto" : "Nuevo producto"}</span>
+    <div className="adm-app">
+      <header className="adm-top">
+        <div className="adm-top-left">
+          <button className="adm-btn adm-btn-icon" onClick={volver} aria-label="Volver">
+            ←
+          </button>
+          <span className="adm-top-title">
+            {p.id ? p.nombre || "Editar producto" : "Nuevo producto"}
+          </span>
         </div>
-        {msg && <span style={{ fontSize: 12, color: msg.startsWith("✓") ? "#4caf8a" : "#e05555", fontWeight: 600 }}>{msg}</span>}
-        <button onClick={handleGuardar} disabled={guardando} style={{ background: "#d4845a", color: "#0f0f0f", border: "none", borderRadius: 7, padding: "8px 20px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
-          {guardando ? "Guardando..." : "Publicar"}
-        </button>
-      </div>
+        <div className="adm-top-right">
+          {msg && <span className={`adm-msg ${msg.tipo}`}>{msg.texto}</span>}
+          <ThemeToggle />
+          <button className="adm-btn adm-btn-ghost adm-btn-sm adm-hide-sm" onClick={volver}>
+            Cancelar
+          </button>
+          <button className="adm-btn adm-btn-primary" onClick={handleGuardar} disabled={guardando}>
+            {guardando ? "Guardando…" : p.id ? "Guardar cambios" : "Publicar en la tienda"}
+          </button>
+        </div>
+      </header>
 
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        {/* PANEL IZQUIERDO */}
-        <div style={{ width: 340, flexShrink: 0, background: "#0f0f0f", borderRight: "1px solid rgba(232,228,224,0.07)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ padding: "10px 10px", borderBottom: "1px solid rgba(232,228,224,0.07)", display: "flex", gap: 4, flexWrap: "wrap" }}>
-            {(["general", "precio", "packs", "imagenes", "secciones", "specs", "comparativa"] as const).map(t => (
-              <button key={t} onClick={() => setTab(t)} style={tabBtn(tab === t)}>
-                {t.toUpperCase()}
+      <div className="adm-editor">
+        <div className="adm-stack">
+          <section className="adm-section">
+            <h2>1. ¿Qué estás vendiendo?</h2>
+            <p className="adm-section-lead">
+              El nombre y la descripción son lo primero que lee el cliente en la ficha.
+            </p>
+            <div className="adm-field">
+              <label className="adm-label">Nombre</label>
+              <input
+                className="adm-input"
+                value={p.nombre}
+                onChange={(e) => onNombre(e.target.value)}
+                placeholder="Ej: Aspiradora portátil para auto"
+              />
+              <div className="adm-url">
+                <span>Enlace:</span>
+                {editSlug ? (
+                  <input
+                    className="adm-input"
+                    style={{ maxWidth: 280, height: 32, padding: "4px 8px", fontSize: 12 }}
+                    value={p.slug}
+                    onChange={(e) => {
+                      setSlugManual(true);
+                      patch({ slug: slugify(e.target.value) });
+                    }}
+                  />
+                ) : (
+                  <code>/productos/{p.slug || "…"}</code>
+                )}
+                <button type="button" onClick={() => setEditSlug((v) => !v)}>
+                  {editSlug ? "Listo" : "Cambiar"}
+                </button>
+              </div>
+            </div>
+            <div className="adm-field">
+              <label className="adm-label">Descripción</label>
+              <textarea
+                className="adm-textarea"
+                value={p.descripcion}
+                onChange={(e) => patch({ descripcion: e.target.value })}
+                placeholder="Aspirá el auto en minutos sin cable. Incluye 3 boquillas para rendijas. Batería recargable de larga duración."
+              />
+              <p className="adm-hint">
+                Escribí con oraciones. La primera es la introducción; cada oración siguiente se muestra como un punto a favor.
+              </p>
+              {frases.length > 0 && (
+                <div className="adm-bullets">
+                  <div className="adm-bullets-title">Así se lee en la tienda</div>
+                  <p style={{ fontSize: 13, color: "var(--text)", marginBottom: 8 }}>
+                    {frases[0]}.
+                  </p>
+                  {frases.length > 1 && (
+                    <ul>
+                      {frases.slice(1).map((f, i) => (
+                        <li key={i}>{f}.</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="adm-section">
+            <h2>2. Fotos</h2>
+            <p className="adm-section-lead">
+              La primera foto es la portada: se ve en el catálogo, el carrito y WhatsApp. Subí varias; el cliente las recorre en la ficha.
+            </p>
+            <div
+              className={`adm-drop${dragOver ? " over" : ""}`}
+              onClick={() => imgInputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                if (e.dataTransfer.files.length) handleUploadImagenes(e.dataTransfer.files);
+              }}
+            >
+              <div style={{ fontSize: 22 }}>📷</div>
+              <strong>{uploadingImg || "Arrastrá fotos acá o hacé clic para subir"}</strong>
+              <span>JPG, PNG o WEBP. Podés seleccionar varias a la vez.</span>
+            </div>
+            <input
+              ref={imgInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              multiple
+              hidden
+              onChange={(e) => {
+                if (e.target.files) handleUploadImagenes(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            {p.imagenes.length > 0 && (
+              <div className="adm-photos">
+                {p.imagenes.map((img, i) => (
+                  <div
+                    key={img + i}
+                    className="adm-photo"
+                    draggable
+                    onDragStart={() => setDragIndex(i)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (dragIndex === null || dragIndex === i) return;
+                      const from = dragIndex;
+                      setP((prev) => ({
+                        ...prev,
+                        imagenes: moveItem(prev.imagenes, from, i),
+                      }));
+                      setDragIndex(null);
+                    }}
+                  >
+                    <img src={img} alt="" />
+                    {i === 0 && <span className="adm-photo-cover">Portada</span>}
+                    <div className="adm-photo-tools">
+                      <button
+                        type="button"
+                        disabled={i === 0}
+                        onClick={() =>
+                          setP((prev) => ({
+                            ...prev,
+                            imagenes: moveItem(prev.imagenes, i, i - 1),
+                          }))
+                        }
+                        title="Mover a la izquierda"
+                      >
+                        ‹
+                      </button>
+                      {i !== 0 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setP((prev) => ({
+                              ...prev,
+                              imagenes: moveItem(prev.imagenes, i, 0),
+                            }))
+                          }
+                          title="Usar como portada"
+                        >
+                          ★
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={i === p.imagenes.length - 1}
+                        onClick={() =>
+                          setP((prev) => ({
+                            ...prev,
+                            imagenes: moveItem(prev.imagenes, i, i + 1),
+                          }))
+                        }
+                        title="Mover a la derecha"
+                      >
+                        ›
+                      </button>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() =>
+                          setP((prev) => ({
+                            ...prev,
+                            imagenes: prev.imagenes.filter((_, j) => j !== i),
+                          }))
+                        }
+                        title="Quitar"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="adm-section">
+            <h2>3. Videos (opcional)</h2>
+            <p className="adm-section-lead">
+              Se muestran en la galería, después de las fotos. Un video corto del producto en uso ayuda mucho.
+            </p>
+            <input
+              ref={vidInputRef}
+              type="file"
+              accept="video/mp4,video/webm,video/quicktime"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleUploadVideo(file);
+                e.target.value = "";
+              }}
+            />
+            <div className="adm-videos">
+              {p.features.map((v, idx) =>
+                v.tipo === "video" && v.archivo ? (
+                  <div key={`${v.archivo}-${idx}`} className="adm-video">
+                    <video src={v.archivo} muted playsInline preload="metadata" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <input
+                        className="adm-input"
+                        value={v.titulo}
+                        placeholder="Título corto (opcional), ej: Cómo se usa"
+                        onChange={(e) => {
+                          const arr = [...p.features];
+                          arr[idx] = { ...arr[idx], titulo: e.target.value };
+                          patch({ features: arr });
+                        }}
+                      />
+                    </div>
+                    <button
+                      className="adm-btn adm-btn-danger adm-btn-sm"
+                      onClick={() =>
+                        patch({ features: p.features.filter((_, j) => j !== idx) })
+                      }
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                ) : null
+              )}
+              <button
+                className="adm-btn adm-btn-ghost"
+                style={{ width: "100%" }}
+                onClick={() => vidInputRef.current?.click()}
+                disabled={uploadingVid}
+              >
+                {uploadingVid ? "Subiendo video…" : "+ Subir un video"}
               </button>
+            </div>
+          </section>
+
+          <section className="adm-section">
+            <h2>4. Precio y stock</h2>
+            <p className="adm-section-lead">
+              El cliente paga el precio de venta por 1 Pack. En la ficha también se ofrece un 2 Pack
+              un 15% más barato por unidad, para que convenga llevar dos.
+              Si cargás un precio anterior más alto, se tacha como oferta.
+            </p>
+            <div className="adm-two">
+              <div className="adm-field">
+                <label className="adm-label">Precio de venta</label>
+                <input
+                  className="adm-input"
+                  inputMode="numeric"
+                  value={p.precio_num ? fmtARS(p.precio_num) : ""}
+                  placeholder="$39.900"
+                  onChange={(e) =>
+                    patch({
+                      precio_num: aNumero(e.target.value),
+                      precio: fmtARS(aNumero(e.target.value)),
+                    })
+                  }
+                />
+                <p className="adm-hint">Lo que paga por 1 unidad.</p>
+              </div>
+              <div className="adm-field">
+                <label className="adm-label">Precio anterior (opcional)</label>
+                <input
+                  className="adm-input"
+                  inputMode="numeric"
+                  value={precioAntNum ? fmtARS(precioAntNum) : ""}
+                  placeholder="$49.900"
+                  onChange={(e) => patch({ precio_anterior: fmtARS(aNumero(e.target.value)) })}
+                />
+                <p className="adm-hint">Se tacha para mostrar el descuento.</p>
+              </div>
+            </div>
+            {p.precio_num > 0 && (
+              <div className="adm-offer">
+                En la tienda se ve: <strong>{fmtARS(p.precio_num)}</strong>
+                {precioAntNum > 0 && <s>{fmtARS(precioAntNum)}</s>}
+                {descuento > 0 && <span className="adm-off">-{descuento}%</span>}
+                {ahorro > 0 && (
+                  <div className="adm-hint" style={{ marginTop: 6 }}>
+                    El cliente ahorra {fmtARS(ahorro)} respecto del precio anterior.
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="adm-two" style={{ marginTop: 16 }}>
+              <div className="adm-field">
+                <label className="adm-label">Unidades en stock</label>
+                <input
+                  className="adm-input"
+                  type="number"
+                  min={0}
+                  value={p.stock}
+                  onChange={(e) => patch({ stock: Number(e.target.value) })}
+                />
+              </div>
+              <div className="adm-field">
+                <label className="adm-label">Texto de cuotas</label>
+                <input
+                  className="adm-input"
+                  value={p.cuotas}
+                  onChange={(e) => patch({ cuotas: e.target.value })}
+                  placeholder="3 y 6 cuotas sin interés"
+                />
+              </div>
+            </div>
+            <div className="adm-switch-row">
+              <div className="adm-switch-copy">
+                <strong>Envío gratis</strong>
+                <span>Se muestra “Llega gratis a todo el país” en la ficha.</span>
+              </div>
+              <label className="adm-switch">
+                <input
+                  type="checkbox"
+                  checked={p.envio_gratis}
+                  onChange={(e) => patch({ envio_gratis: e.target.checked })}
+                />
+                <span />
+              </label>
+            </div>
+          </section>
+
+          <section className="adm-section">
+            <h2>5. Visibilidad</h2>
+            <p className="adm-section-lead">
+              Si está oculto, no aparece en el catálogo. Podés dejarlo guardado y mostrarlo después.
+            </p>
+            <div className="adm-switch-row">
+              <div className="adm-switch-copy">
+                <strong>Mostrar en la tienda</strong>
+                <span>
+                  {p.activo
+                    ? "Los clientes lo van a ver apenas lo publiques."
+                    : "Queda guardado, pero nadie lo ve hasta que lo actives."}
+                </span>
+              </div>
+              <label className="adm-switch">
+                <input
+                  type="checkbox"
+                  checked={p.activo}
+                  onChange={(e) => patch({ activo: e.target.checked })}
+                />
+                <span />
+              </label>
+            </div>
+          </section>
+        </div>
+
+        <aside className="adm-side">
+          <div className="adm-preview">
+            <div className="adm-preview-label">Vista previa en el catálogo</div>
+            <div className="adm-preview-img">
+              {p.imagenes[0] ? (
+                <img src={p.imagenes[0]} alt="" />
+              ) : (
+                "La portada aparece acá"
+              )}
+            </div>
+            <div className="adm-preview-body">
+              <h3>{p.nombre || "Nombre del producto"}</h3>
+              <div className="adm-preview-price">
+                {p.precio_num ? fmtARS(p.precio_num) : "$ —"}
+                {precioAntNum > 0 && (
+                  <s style={{ fontSize: 13, fontWeight: 600, color: "var(--text-3)", marginLeft: 8 }}>
+                    {fmtARS(precioAntNum)}
+                  </s>
+                )}
+              </div>
+              <div className="adm-preview-cuotas">{p.cuotas || "3 y 6 cuotas sin interés"}</div>
+              {p.envio_gratis && (
+                <div style={{ fontSize: 12, color: "var(--text-3)", fontWeight: 700, marginTop: 6 }}>
+                  Envío gratis
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="adm-checklist">
+            <h3>Para publicar</h3>
+            {checklist.map((c) => (
+              <div key={c.label} className="adm-check">
+                <span className={`adm-dot ${c.ok ? "on" : "off"}`}>{c.ok ? "✓" : ""}</span>
+                {c.label}
+              </div>
             ))}
           </div>
 
-          <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-            {tab === "general" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                <div>
-                  <label style={lStyle}>Nombre del producto</label>
-                  <input value={p.nombre} onChange={e => set("nombre", e.target.value)} style={iStyle} />
-                </div>
-                <div>
-                  <label style={lStyle}>Slug (URL)</label>
-                  <input value={p.slug} onChange={e => set("slug", e.target.value)} style={iStyle} />
-                </div>
-                <div>
-                  <label style={lStyle}>Descripción General</label>
-                  <textarea value={p.descripcion} onChange={e => set("descripcion", e.target.value)} rows={4} style={{ ...iStyle, resize: "none" }} />
-                </div>
-              </div>
-            )}
-
-            {tab === "precio" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                <div>
-                  <label style={lStyle}>Precio Mostrar (ej: $39.900)</label>
-                  <input value={p.precio} onChange={e => set("precio", e.target.value)} style={iStyle} />
-                </div>
-                <div>
-                  <label style={lStyle}>Precio Anterior (Tachado)</label>
-                  <input value={p.precio_anterior} onChange={e => set("precio_anterior", e.target.value)} style={iStyle} />
-                </div>
-                <div>
-                  <label style={lStyle}>Precio Numérico (Checkout)</label>
-                  <input type="number" value={p.precio_num} onChange={e => set("precio_num", Number(e.target.value))} style={iStyle} />
-                </div>
-              </div>
-            )}
-
-            {tab === "packs" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ fontSize: 11, color: "rgba(232,228,224,0.5)", marginBottom: 4 }}>Configurá los descuentos por cantidad (Packs 1, 2 y 3 unids):</div>
-                {p.packs.map((pk, idx) => (
-                  <div key={idx} style={{ background: "rgba(232,228,224,0.03)", border: "1px solid rgba(232,228,224,0.08)", borderRadius: 8, padding: 10 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#d4845a", marginBottom: 6 }}>Pack {pk.cantidad} Unidad(es)</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                      <div>
-                        <label style={lStyle}>Precio</label>
-                        <input value={pk.precio} onChange={e => {
-                          const newPacks = [...p.packs];
-                          newPacks[idx].precio = e.target.value;
-                          set("packs", newPacks);
-                        }} style={iStyle} />
-                      </div>
-                      <div>
-                        <label style={lStyle}>Ahorro/Badge</label>
-                        <input value={pk.descuento} onChange={e => {
-                          const newPacks = [...p.packs];
-                          newPacks[idx].descuento = e.target.value;
-                          set("packs", newPacks);
-                        }} style={iStyle} />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {tab === "imagenes" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                <div onClick={() => imgInputRef.current?.click()} style={{ border: "1.5px dashed rgba(232,228,224,0.2)", borderRadius: 10, padding: 20, textAlign: "center", cursor: "pointer" }}>
-                  <div style={{ fontSize: 12, color: "rgba(232,228,224,0.5)" }}>{uploadingImg ? "Subiendo..." : "+ Subir imágenes"}</div>
-                </div>
-                <input ref={imgInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => e.target.files && handleUploadImagenes(e.target.files)} />
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
-                  {p.imagenes.map((img, i) => (
-                    <div key={i} style={{ position: "relative", aspectRatio: "1", borderRadius: 8, overflow: "hidden" }}>
-                      <img src={img} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      <button onClick={() => set("imagenes", p.imagenes.filter((_, j) => j !== i))} style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,0.7)", color: "#fff", border: "none", borderRadius: "50%", width: 18, height: 18 }}>✕</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {tab === "secciones" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {p.features.map((f, i) => (
-                  <div key={i} style={{ background: "rgba(232,228,224,0.03)", border: "1px solid rgba(232,228,224,0.08)", borderRadius: 10, padding: 14 }}>
-                    <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                      <button onClick={() => { const arr = [...p.features]; arr[i] = { ...arr[i], tipo: "imagen" }; set("features", arr); }} style={tabBtn(f.tipo === "imagen")}>Imagen</button>
-                      <button onClick={() => { const arr = [...p.features]; arr[i] = { ...arr[i], tipo: "video" }; set("features", arr); }} style={tabBtn(f.tipo === "video")}>Video MP4</button>
-                    </div>
-
-                    <div style={{ marginBottom: 8 }}>
-                      <button 
-                        onClick={() => {
-                          bloqueIndexRef.current = i;
-                          fileInputBloqueRef.current?.click();
-                        }}
-                        style={{ width: "100%", background: "rgba(212,132,90,0.15)", border: "1px solid #d4845a", color: "#d4845a", borderRadius: 6, padding: "8px", fontSize: 11, fontWeight: 700, cursor: "pointer", marginBottom: 6 }}
-                      >
-                        {subiendoBloque === i ? "Subiendo archivo..." : f.archivo ? "📁 Cambiar archivo local" : "📁 Subir Video o Imagen"}
-                      </button>
-                      <input value={f.archivo || ""} onChange={e => { const arr = [...p.features]; arr[i] = { ...arr[i], archivo: e.target.value }; set("features", arr); }} placeholder="O pegar URL pública" style={iStyle} />
-                    </div>
-
-                    <input value={f.titulo} onChange={e => { const arr = [...p.features]; arr[i] = { ...arr[i], titulo: e.target.value }; set("features", arr); }} placeholder="Título sección" style={{ ...iStyle, marginBottom: 8 }} />
-                    <textarea value={f.desc} onChange={e => { const arr = [...p.features]; arr[i] = { ...arr[i], desc: e.target.value }; set("features", arr); }} rows={2} placeholder="Descripción detalle" style={{ ...iStyle, resize: "none" }} />
-                    <button onClick={() => set("features", p.features.filter((_, j) => j !== i))} style={{ marginTop: 8, background: "none", border: "none", color: "#e05555", fontSize: 11, cursor: "pointer" }}>Eliminar bloque</button>
-                  </div>
-                ))}
-                <button onClick={() => set("features", [...p.features, { tipo: "video", archivo: "", titulo: "", desc: "" }])} style={{ background: "rgba(232,228,224,0.04)", border: "1px dashed rgba(232,228,224,0.15)", color: "#e8e4e0", borderRadius: 8, padding: "10px", cursor: "pointer" }}>+ Agregar bloque Video / Imagen</button>
-              </div>
-            )}
-
-            {tab === "specs" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {p.specs.map(([k, v], i) => (
-                  <div key={i} style={{ display: "flex", gap: 6 }}>
-                    <input value={k} onChange={e => { const arr = [...p.specs]; arr[i][0] = e.target.value; set("specs", arr); }} placeholder="Caract. (ej: Batería)" style={iStyle} />
-                    <input value={v} onChange={e => { const arr = [...p.specs]; arr[i][1] = e.target.value; set("specs", arr); }} placeholder="Valor (ej: 2000 mAh)" style={iStyle} />
-                  </div>
-                ))}
-                <button onClick={() => set("specs", [...p.specs, ["", ""]])} style={{ background: "rgba(232,228,224,0.04)", border: "1px dashed rgba(232,228,224,0.15)", color: "#e8e4e0", borderRadius: 8, padding: "10px", cursor: "pointer" }}>+ Agregar especificación</button>
-              </div>
-            )}
-
-            {tab === "comparativa" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {p.comparativa.map((item, i) => (
-                  <input key={i} value={item} onChange={e => { const arr = [...p.comparativa]; arr[i] = e.target.value; set("comparativa", arr); }} placeholder="Ventaja comparativa..." style={iStyle} />
-                ))}
-                <button onClick={() => set("comparativa", [...p.comparativa, ""])} style={{ background: "rgba(232,228,224,0.04)", border: "1px dashed rgba(232,228,224,0.15)", color: "#e8e4e0", borderRadius: 8, padding: "10px", cursor: "pointer" }}>+ Agregar ventaja</button>
-              </div>
+          <div className="adm-footer-actions">
+            <button
+              className="adm-btn adm-btn-primary"
+              style={{ width: "100%", height: 44 }}
+              onClick={handleGuardar}
+              disabled={guardando || !listo}
+            >
+              {guardando ? "Guardando…" : p.id ? "Guardar cambios" : "Publicar en la tienda"}
+            </button>
+            {!listo && (
+              <p className="adm-hint" style={{ textAlign: "center" }}>
+                Completá nombre, precio y una foto.
+              </p>
             )}
           </div>
-        </div>
-
-        {/* VISTA PREVIA RENDERIZADA */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ height: 42, background: "#141414", borderBottom: "1px solid rgba(232,228,224,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", flexShrink: 0 }}>
-            <div style={{ fontSize: 11, color: "rgba(232,228,224,0.35)" }}>tiendatuc.store/productos/{p.slug || "..."}</div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={() => setPreviewTab("desktop")} style={tabBtn(previewTab === "desktop")}>Desktop</button>
-              <button onClick={() => setPreviewTab("mobile")} style={tabBtn(previewTab === "mobile")}>Mobile</button>
-            </div>
-          </div>
-
-          <div style={{ flex: 1, overflowY: "auto", background: "#0a0a0a", display: "flex", justifyContent: "center", padding: previewTab === "mobile" ? "24px 16px" : "0" }}>
-            <div style={{ width: previewTab === "mobile" ? 375 : "100%", background: "#0f0f0f", overflow: "hidden", minHeight: 600, padding: previewTab === "mobile" ? 16 : 32, maxWidth: 1000, margin: "0 auto" }}>
-
-              <div style={{ display: "flex", flexDirection: previewTab === "mobile" ? "column" : "row", gap: 32, marginBottom: 40 }}>
-                {/* Galería Principal */}
-                <div style={{ flex: 1 }}>
-                  <div style={{ aspectRatio: "1", background: "#141414", borderRadius: 12, overflow: "hidden", marginBottom: 12, border: "1px solid rgba(232,228,224,0.08)" }}>
-                    {p.imagenes[0] ? <img src={p.imagenes[0]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
-                    {p.imagenes.map((img, idx) => (
-                      <div key={idx} style={{ aspectRatio: "1", borderRadius: 6, overflow: "hidden", border: "1px solid rgba(232,228,224,0.1)" }}>
-                        <img src={img} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Info & Packs */}
-                <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                  <h1 style={{ fontFamily: "'Syne',sans-serif", fontSize: 22, fontWeight: 800, color: "#e8e4e0", marginBottom: 12 }}>{p.nombre || "Nombre del Producto"}</h1>
-
-                  {/* Packs Dinámicos */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-                    {p.packs.map((pk, idx) => (
-                      <div key={idx} style={{ background: "#141414", border: pk.popular ? "2px solid #d4845a" : "1px solid rgba(232,228,224,0.15)", borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: "#e8e4e0" }}>{pk.cantidad} Pack </span>
-                          <span style={{ fontSize: 10, background: "#d4845a", color: "#000", padding: "2px 6px", borderRadius: 4, fontWeight: 800, marginLeft: 6 }}>AHORRÁ {pk.descuento}</span>
-                        </div>
-                        <span style={{ fontSize: 15, fontWeight: 800, color: "#e8e4e0" }}>{pk.precio}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <p style={{ fontSize: 13, color: "rgba(232,228,224,0.6)", lineHeight: 1.5, marginBottom: 20 }}>{p.descripcion}</p>
-                  <button style={{ width: "100%", background: "#d4845a", color: "#0f0f0f", border: "none", borderRadius: 8, padding: 15, fontSize: 14, fontWeight: 800, cursor: "pointer" }}>AGREGAR AL CARRITO</button>
-                </div>
-              </div>
-
-              {/* Secciones con Videos / Fotos */}
-              {p.features.length > 0 && (
-                <div style={{ borderTop: "1px solid rgba(232,228,224,0.08)", paddingTop: 32, marginBottom: 30 }}>
-                  <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: 18, fontWeight: 800, color: "#e8e4e0", textAlign: "center", marginBottom: 20 }}>Demostración en Vivo</h2>
-                  <div style={{ display: "grid", gridTemplateColumns: previewTab === "mobile" ? "1fr" : "repeat(2, 1fr)", gap: 16 }}>
-                    {p.features.map((f, idx) => (
-                      <div key={idx} style={{ background: "#141414", border: "1px solid rgba(232,228,224,0.08)", borderRadius: 10, padding: 14 }}>
-                        {f.archivo && (
-                          <div style={{ aspectRatio: "16/9", borderRadius: 8, overflow: "hidden", marginBottom: 10, background: "#000" }}>
-                            {f.tipo === "video" ? <video src={f.archivo} autoPlay loop muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <img src={f.archivo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
-                          </div>
-                        )}
-                        <h3 style={{ fontSize: 14, fontWeight: 700, color: "#e8e4e0", marginBottom: 4 }}>{f.titulo}</h3>
-                        <p style={{ fontSize: 12, color: "rgba(232,228,224,0.5)", lineHeight: 1.4 }}>{f.desc}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-            </div>
-          </div>
-        </div>
-
+        </aside>
       </div>
     </div>
   );

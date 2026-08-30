@@ -1,7 +1,7 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { useCart } from "../store/cartStore";
-import { supabase } from "../lib/supabase";
+import "./checkout.css";
 
 type Paso = 1 | 2 | 3;
 type TipoEnvio = "domicilio" | "sucursal";
@@ -43,8 +43,8 @@ const getCostoFormateado = (prov: string) => {
 };
 
 const getTransportista = (prov: string) => {
-  if (PROVINCIAS_FIXY.includes(prov)) return { nombre:"Fixy", emoji:"⚡", desc:"Entrega express en CABA y GBA" };
-  return { nombre:"Urbano Express", emoji:"📦", desc:"Entrega en todo el país" };
+  if (PROVINCIAS_FIXY.includes(prov)) return { nombre: "Fixy", desc: "Entrega express en CABA y GBA" };
+  return { nombre: "Urbano Express", desc: "Entrega en todo el país" };
 };
 
 const PROVINCIAS = [
@@ -54,13 +54,31 @@ const PROVINCIAS = [
   "Santiago del Estero","Tierra del Fuego","Tucumán"
 ];
 
+const svg = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+
+const ico = {
+  candado: <svg {...svg} width="14" height="14"><rect x="3" y="11" width="18" height="10" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>,
+  camion: <svg {...svg} width="18" height="18"><rect x="1" y="7" width="14" height="9" rx="1" /><path d="M15 10h3.5l3 3v3H15" /><circle cx="6" cy="19" r="1.8" /><circle cx="17.5" cy="19" r="1.8" /></svg>,
+  casa: <svg {...svg} width="22" height="22"><path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><path d="M9 21v-7h6v7" /></svg>,
+  caja: <svg {...svg} width="22" height="22"><path d="m21 8-9-5-9 5 9 5 9-5Z" /><path d="M3 8v8l9 5 9-5V8" /><path d="M12 13v8" /></svg>,
+  rayo: <svg {...svg} width="22" height="22"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" /></svg>,
+  escudo: <svg {...svg} width="16" height="16"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" /><path d="m9 12 2 2 4-4" /></svg>,
+  volver: <svg {...svg} width="16" height="16" strokeWidth={2}><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></svg>,
+  seguir: <svg {...svg} width="16" height="16" strokeWidth={2}><path d="M5 12h13" /><path d="m12 5 7 7-7 7" /></svg>,
+  chevron: <svg {...svg} width="16" height="16" strokeWidth={2}><path d="m6 9 6 6 6-6" /></svg>,
+  alerta: <svg {...svg} width="16" height="16"><circle cx="12" cy="12" r="9" /><path d="M12 8v5" /><path d="M12 16h.01" /></svg>,
+};
+
 export default function CheckoutPage() {
   const { items, vaciar } = useCart();
   const [paso, setPaso] = useState<Paso>(1);
   const [tipoEnvio, setTipoEnvio] = useState<TipoEnvio>("domicilio");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
+  const [errores, setErrores] = useState<Record<string, string>>({});
   const [mpReady, setMpReady] = useState(false);
+  const [brickListo, setBrickListo] = useState(false);
+  const [resumenAbierto, setResumenAbierto] = useState(false);
 
   // Datos personales
   const [nombre, setNombre] = useState("");
@@ -86,78 +104,147 @@ export default function CheckoutPage() {
   const subtotal = items.reduce((acc, item) => acc + item.precioNum * item.cantidad, 0);
   const costoEnvio = (provincia && tipoEnvio === "domicilio") ? getCostoEnvio(provincia) : 0;
   const total = subtotal + costoEnvio;
-  const totalFormateado = total.toLocaleString("es-AR");
+  const fmt = (n: number) => "$" + Math.round(n || 0).toLocaleString("es-AR");
+
+  const brickRef = useRef<any>(null);
+  const creatingBrick = useRef(false);
+  const pedidoRef = useRef({
+    nombre, apellido, email, telefono, dni, notas,
+    tipoEnvio, direccion, apartamento, ciudad, provincia, codigoPostal, sucursalInfo,
+    items, total, costoEnvio, vaciar,
+  });
+  pedidoRef.current = {
+    nombre, apellido, email, telefono, dni, notas,
+    tipoEnvio, direccion, apartamento, ciudad, provincia, codigoPostal, sucursalInfo,
+    items, total, costoEnvio, vaciar,
+  };
 
   // Cargar MercadoPago SDK
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const script = document.createElement("script");
-    script.src = "https://sdk.mercadopago.com/js/v2";
-    script.onload = () => setMpReady(true);
+    const mark = () => setMpReady(true);
+    if ((window as any).MercadoPago) {
+      mark();
+      return;
+    }
+    const src = "https://sdk.mercadopago.com/js/v2";
+    let script = document.querySelector(`script[src="${src}"]`) as HTMLScriptElement | null;
+    if (script) {
+      script.addEventListener("load", mark);
+      if ((window as any).MercadoPago) mark();
+      return;
+    }
+    script = document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.onload = mark;
     document.body.appendChild(script);
   }, []);
 
-  // Inicializar Bricks cuando llega al paso 3
+  // Brick: una sola instancia. No se destruye en el remount de React (si no, el spinner queda eterno).
   useEffect(() => {
-    if (paso !== 3 || !mpReady || typeof window === "undefined") return;
-    const mp = new (window as any).MercadoPago("APP_USR-64a7eb8e-5ae0-45e0-a0d1-827f25e9c4b8", { locale:"es-AR" });
-    const bricksBuilder = mp.bricks();
+    if (paso !== 3) {
+      try { brickRef.current?.unmount?.(); } catch { /* ignore */ }
+      brickRef.current = null;
+      creatingBrick.current = false;
+      setBrickListo(false);
+      return;
+    }
+    if (!mpReady || typeof window === "undefined") return;
+    if (brickRef.current) {
+      setBrickListo(true);
+      return;
+    }
+    if (creatingBrick.current) return;
+
+    creatingBrick.current = true;
 
     const renderBrick = async () => {
-      const container = document.getElementById("cardPaymentBrick_container");
-      if (!container || container.children.length > 0) return;
+      const waitForContainer = async () => {
+        for (let i = 0; i < 20; i++) {
+          const el = document.getElementById("cardPaymentBrick_container");
+          if (el) return el;
+          await new Promise(r => setTimeout(r, 50));
+        }
+        return null;
+      };
+
+      const container = await waitForContainer();
+      if (!container) {
+        creatingBrick.current = false;
+        setError("Error al inicializar el pago.");
+        return;
+      }
 
       try {
-        const res = await fetch("/api/crear-preferencia", {
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({
-            items: items.map(i => ({ id:i.id, nombre:i.nombre, cantidad:i.cantidad, precioNum:i.precioNum })),
-          }),
-        });
-        const data = await res.json();
-
-        await bricksBuilder.create("cardPayment", "cardPaymentBrick_container", {
-          initialization: { amount: total, preferenceId: data.id },
+        const mp = new (window as any).MercadoPago("APP_USR-64a7eb8e-5ae0-45e0-a0d1-827f25e9c4b8", { locale: "es-AR" });
+        const d0 = pedidoRef.current;
+        const controller = await mp.bricks().create("cardPayment", "cardPaymentBrick_container", {
+          initialization: {
+            amount: d0.total,
+            payer: { email: d0.email },
+          },
           customization: {
-            visual: { style: { theme:"dark" } },
-            paymentMethods: { creditCard:"all", debitCard:"all" },
+            visual: { style: { theme: document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default" } },
+            paymentMethods: { maxInstallments: 12 },
           },
           callbacks: {
-            onReady: () => {},
-            onSubmit: async (formData: any) => {
+            onReady: () => setBrickListo(true),
+            onSubmit: async (payload: any) => {
+              const card = payload?.token ? payload : (payload?.formData ?? payload);
+              const d = pedidoRef.current;
               setEnviando(true);
+              setError("");
               try {
-                const res = await fetch("/api/procesar-pago", {
-                  method:"POST",
-                  headers:{"Content-Type":"application/json"},
+                const payRes = await fetch("/api/procesar-pago", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
-                    formData,
+                    formData: card,
                     pedido: {
-                      nombre: `${nombre} ${apellido}`, email, telefono, dni, notas,
-                      tipoEnvio,
-                      direccion: tipoEnvio === "domicilio" ? `${direccion}${apartamento ? `, ${apartamento}` : ""}, ${ciudad}, ${provincia} (CP: ${codigoPostal})` : sucursalInfo,
-                      items,
-                      total,
+                      nombre: `${d.nombre} ${d.apellido}`,
+                      email: d.email,
+                      telefono: d.telefono,
+                      dni: d.dni,
+                      notas: d.notas,
+                      tipoEnvio: d.tipoEnvio,
+                      direccion: d.tipoEnvio === "domicilio"
+                        ? `${d.direccion}${d.apartamento ? `, ${d.apartamento}` : ""}, ${d.ciudad}, ${d.provincia} (CP: ${d.codigoPostal})`
+                        : d.sucursalInfo,
+                      items: d.items,
+                      total: d.total,
+                      costoEnvio: d.costoEnvio,
                     },
                   }),
                 });
-                const result = await res.json();
+                const result = await payRes.json();
                 if (result.status === "approved") {
-                  vaciar();
+                  d.vaciar();
                   window.location.href = "/gracias";
-                } else {
-                  setError("El pago no fue aprobado. Revisá los datos e intentá de nuevo.");
+                  return;
                 }
-              } catch {
-                setError("Hubo un error procesando el pago. Intentá de nuevo.");
+                setError("El pago no fue aprobado. Revisá los datos e intentá de nuevo.");
+                throw new Error(result.detail || "rejected");
+              } catch (err) {
+                if (!(err instanceof Error) || err.message === "rejected") {
+                  /* ya hay mensaje */
+                } else {
+                  setError("Hubo un error procesando el pago. Intentá de nuevo.");
+                }
+                throw err;
+              } finally {
+                setEnviando(false);
               }
-              setEnviando(false);
             },
             onError: () => setError("Error al cargar el formulario de pago."),
           },
         });
+
+        brickRef.current = controller;
+        creatingBrick.current = false;
+        setBrickListo(true);
       } catch {
+        creatingBrick.current = false;
         setError("Error al inicializar el pago.");
       }
     };
@@ -166,353 +253,418 @@ export default function CheckoutPage() {
   }, [paso, mpReady]);
 
   const validarPaso1 = () => {
-    if (!nombre.trim()) return "Ingresá tu nombre";
-    if (!apellido.trim()) return "Ingresá tu apellido";
-    if (dni.length < 7) return "Ingresá un DNI válido";
-    if (!email.includes("@")) return "Ingresá un email válido";
-    if (telefono.length < 8) return "Ingresá un teléfono válido";
-    return null;
+    const e: Record<string, string> = {};
+    if (!nombre.trim()) e.nombre = "Ingresá tu nombre";
+    if (!apellido.trim()) e.apellido = "Ingresá tu apellido";
+    if (dni.replace(/\D/g, "").length < 7) e.dni = "Ingresá un DNI válido";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = "Ingresá un email válido";
+    if (telefono.replace(/\D/g, "").length < 8) e.telefono = "Ingresá un teléfono válido";
+    return e;
   };
 
   const validarPaso2 = () => {
-    if (!provincia) return "Seleccioná tu provincia";
+    const e: Record<string, string> = {};
+    if (!provincia) e.provincia = "Seleccioná tu provincia";
     if (tipoEnvio === "domicilio") {
-      if (!direccion.trim()) return "Ingresá tu dirección";
-      if (!ciudad.trim()) return "Ingresá tu ciudad";
-      if (!codigoPostal.trim()) return "Ingresá tu código postal";
-    } else {
-      if (!sucursalInfo.trim()) return "Ingresá la dirección de la sucursal";
+      if (!direccion.trim()) e.direccion = "Ingresá tu dirección";
+      if (!ciudad.trim()) e.ciudad = "Ingresá tu ciudad";
+      if (!codigoPostal.trim()) e.codigoPostal = "Ingresá tu código postal";
+    } else if (!sucursalInfo.trim()) {
+      e.sucursalInfo = "Ingresá la dirección de la sucursal";
     }
-    return null;
+    return e;
   };
 
   const siguientePaso = () => {
     setError("");
-    if (paso === 1) {
-      const err = validarPaso1();
-      if (err) { setError(err); return; }
-    }
-    if (paso === 2) {
-      const err = validarPaso2();
-      if (err) { setError(err); return; }
+    const e = paso === 1 ? validarPaso1() : paso === 2 ? validarPaso2() : {};
+    setErrores(e);
+    if (Object.keys(e).length > 0) {
+      // El mensaje recién existe después del re-render
+      requestAnimationFrame(() => {
+        document.querySelector(".ck-field-err")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      return;
     }
     setPaso((paso + 1) as Paso);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  if (items.length === 0) return (
-    <div style={{ minHeight:"100vh", background:"var(--bg)", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16 }}>
-      <div style={{ fontSize:48 }}>🛒</div>
-      <h2>Tu carrito está vacío</h2>
-      <a href="/" className="btn-copper">Ver productos</a>
-    </div>
-  );
-
-  const inputStyle: any = {
-    width:"100%", background:"var(--bg-3)", border:"1px solid var(--border-2)",
-    borderRadius:8, padding:"13px 14px", fontSize:14, color:"var(--text)",
-    fontFamily:"var(--font-body)", outline:"none", boxSizing:"border-box",
-    transition:"border-color 0.2s",
+  const volverA = (n: Paso) => {
+    setError("");
+    setErrores({});
+    setPaso(n);
   };
 
-  const labelStyle: any = {
-    display:"block", fontSize:11, fontWeight:700, letterSpacing:"0.1em",
-    textTransform:"uppercase", color:"var(--text-3)", marginBottom:6,
+  // Campo de formulario reutilizable (se llama como función para no perder el foco al re-renderizar)
+  const campo = (p: {
+    id: string; label: string; valor: string; set: (v: string) => void;
+    placeholder?: string; type?: string; opcional?: boolean; ayuda?: string;
+    autoComplete?: string; inputMode?: "text" | "numeric" | "tel" | "email"; area?: boolean;
+  }) => {
+    const err = errores[p.id];
+    const onChange = (v: string) => {
+      p.set(v);
+      if (err) setErrores(prev => ({ ...prev, [p.id]: "" }));
+    };
+    return (
+      <div className="ck-campo">
+        <label className="ck-label" htmlFor={p.id}>
+          {p.label}{p.opcional && <em> (opcional)</em>}
+        </label>
+        {p.area ? (
+          <textarea
+            id={p.id}
+            className={`ck-input${err ? " err" : ""}`}
+            value={p.valor}
+            onChange={e => onChange(e.target.value)}
+            placeholder={p.placeholder}
+            rows={3}
+          />
+        ) : (
+          <input
+            id={p.id}
+            className={`ck-input${err ? " err" : ""}`}
+            type={p.type || "text"}
+            value={p.valor}
+            onChange={e => onChange(e.target.value)}
+            placeholder={p.placeholder}
+            autoComplete={p.autoComplete}
+            inputMode={p.inputMode}
+          />
+        )}
+        {err ? (
+          <div className="ck-field-err">{ico.alerta}{err}</div>
+        ) : p.ayuda ? (
+          <div className="ck-ayuda">{p.ayuda}</div>
+        ) : null}
+      </div>
+    );
   };
+
+  const transportista = provincia ? getTransportista(provincia) : null;
+
+  if (items.length === 0) {
+    return (
+      <div className="ck">
+        <div className="ck-vacio">
+          <div className="ck-vacio-ico">
+            <svg {...svg} width="38" height="38"><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" /></svg>
+          </div>
+          <h2 style={{ marginBottom: 8 }}>Todavía no hay nada acá</h2>
+          <p className="t-sm" style={{ marginBottom: 24, maxWidth: 360 }}>
+            Agregá un producto al carrito y volvé para completar el pedido.
+          </p>
+          <a href="/" className="ck-btn" style={{ display: "inline-flex", flex: "none", padding: "16px 34px" }}>
+            Ver productos
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ background:"var(--bg)", minHeight:"100vh", padding:"40px 20px 80px 20px", overflowX:"hidden", maxWidth:"100vw", boxSizing:"border-box" as any }}>
-      <style>{`
-        @media(max-width:768px){
-          .checkout-grid{ grid-template-columns:1fr!important; }
-          .checkout-grid .resumen{ order:-1; max-width:100%!important; overflow:hidden!important; }
-          .checkout-grid > div { max-width:100%!important; overflow:hidden!important; }
-        }
-        @media(max-width:640px){
-          .envio-cards-grid{ grid-template-columns:1fr 1fr!important; gap:8px!important; }
-          .form-2col{ grid-template-columns:1fr!important; }
-          .pasos-wrap{ gap:0!important; }
-          .paso-label{ display:none!important; }
-        }
-        html, body { overflow-x: hidden !important; max-width: 100vw !important; }
-        .checkout-root { padding: 24px 20px 80px 20px !important; }
-        input:focus,select:focus,textarea:focus{ border-color:var(--copper)!important; }
-        .envio-card{ cursor:pointer; transition:all 0.2s; }
-        .envio-card:hover{ border-color:var(--copper)!important; }
-      `}</style>
+    <div className="ck">
+      <div className="ck-wrap">
 
-      <div style={{ maxWidth:1000, margin:"0 auto" }}>
-
-        {/* Header */}
-        <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:36 }}>
-          <a href="/" style={{ color:"var(--text-3)", display:"flex" }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
-          </a>
-          <h2 style={{ margin:0 }}>Finalizar compra</h2>
-        </div>
-
-        {/* Pasos */}
-        <div style={{ display:"flex", alignItems:"center", gap:0, marginBottom:36 }}>
-          {[["1","Datos"],["2","Envío"],["3","Pago"]].map(([n, label], i) => (
-            <div key={n} style={{ display:"flex", alignItems:"center", flex: i < 2 ? 1 : "none" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                <div style={{ width:32, height:32, borderRadius:"50%", background: Number(n) <= paso ? "var(--copper)" : "var(--bg-2)", border:`2px solid ${Number(n) <= paso ? "var(--copper)" : "var(--border-2)"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, color: Number(n) <= paso ? "#0f0f0f" : "var(--text-3)", transition:"all 0.3s", flexShrink:0 }}>
-                  {Number(n) < paso ? "✓" : n}
-                </div>
-                <span style={{ fontSize:13, fontWeight:500, color: Number(n) <= paso ? "var(--text)" : "var(--text-3)" }}>{label}</span>
-              </div>
-              {i < 2 && <div style={{ flex:1, height:1, background: Number(n) < paso ? "var(--copper)" : "var(--border)", margin:"0 12px", transition:"background 0.3s" }} />}
+        <div className="ck-head">
+          <div className="ck-head-left">
+            <a href="/" className="ck-back" aria-label="Volver a la tienda">{ico.volver}</a>
+            <div>
+              <div className="ck-kicker">Completar pedido</div>
+              <h1 className="ck-h1">Casi listo</h1>
+              <p className="ck-lead">Tus datos, el envío y el pago. Tres pasos y el pedido queda confirmado.</p>
             </div>
-          ))}
+          </div>
+          <span className="ck-safe">{ico.candado} Pago protegido</span>
         </div>
 
-        <div className="checkout-grid" style={{ display:"grid", gridTemplateColumns:"1fr 360px", gap:24, alignItems:"start" }}>
+        <nav className="ck-pasos" aria-label="Pasos del pedido">
+          {([[1, "Tus datos"], [2, "Envío"], [3, "Pago"]] as const).map(([n, label], i) => {
+            const done = n < paso;
+            return (
+              <Fragment key={n}>
+                {i > 0 && <span className={`ck-paso-line${paso >= n ? " on" : ""}`} aria-hidden />}
+                <button
+                  type="button"
+                  className={`ck-paso${n === paso ? " on" : ""}${done ? " done clickable" : ""}`}
+                  onClick={() => done && volverA(n as Paso)}
+                  disabled={n > paso}
+                  aria-current={n === paso ? "step" : undefined}
+                >
+                  <span className="ck-paso-n">{done ? "✓" : n}</span>
+                  <span className="ck-paso-label">{label}</span>
+                </button>
+              </Fragment>
+            );
+          })}
+        </nav>
 
-          {/* Formulario */}
+        <div className="ck-grid">
+
+          {/* ══════════ FORMULARIO ══════════ */}
           <div>
-            {error && (
-              <div style={{ background:"rgba(224,85,85,0.08)", border:"1px solid rgba(224,85,85,0.2)", borderRadius:8, padding:"12px 16px", marginBottom:20 }}>
-                <span className="t-sm" style={{ color:"var(--red)" }}>⚠ {error}</span>
-              </div>
-            )}
+            {error && <div className="ck-error">{ico.alerta}{error}</div>}
 
             {/* PASO 1 — Datos personales */}
             {paso === 1 && (
-              <div style={{ background:"var(--bg-2)", border:"1px solid var(--border)", borderRadius:14, padding:24 }}>
-                <div className="t-label" style={{ marginBottom:20 }}>Datos personales</div>
-                <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                    <div>
-                      <label style={labelStyle}>Nombre</label>
-                      <input type="text" value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Tu nombre" style={inputStyle}
-                        onFocus={e=>e.target.style.borderColor="var(--copper)"} onBlur={e=>e.target.style.borderColor="var(--border-2)"}/>
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Apellido</label>
-                      <input type="text" value={apellido} onChange={e=>setApellido(e.target.value)} placeholder="Tu apellido" style={inputStyle}
-                        onFocus={e=>e.target.style.borderColor="var(--copper)"} onBlur={e=>e.target.style.borderColor="var(--border-2)"}/>
-                    </div>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>DNI</label>
-                    <input type="text" value={dni} onChange={e=>setDni(e.target.value)} placeholder="Sin puntos ni guiones" style={inputStyle}
-                      onFocus={e=>e.target.style.borderColor="var(--copper)"} onBlur={e=>e.target.style.borderColor="var(--border-2)"}/>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Email</label>
-                    <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu@email.com" style={inputStyle}
-                      onFocus={e=>e.target.style.borderColor="var(--copper)"} onBlur={e=>e.target.style.borderColor="var(--border-2)"}/>
-                    <div className="t-xs" style={{ marginTop:4 }}>Te enviamos la confirmación del pedido acá</div>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Teléfono / WhatsApp</label>
-                    <input type="tel" value={telefono} onChange={e=>setTelefono(e.target.value)} placeholder="Ej: 3815440596" style={inputStyle}
-                      onFocus={e=>e.target.style.borderColor="var(--copper)"} onBlur={e=>e.target.style.borderColor="var(--border-2)"}/>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Notas del pedido <span style={{ color:"var(--text-3)", fontWeight:400 }}>(opcional)</span></label>
-                    <textarea value={notas} onChange={e=>setNotas(e.target.value)}
-                      placeholder="Instrucciones especiales para la entrega, horarios, etc."
-                      rows={3}
-                      style={{ ...inputStyle, resize:"none" as any }}
-                      onFocus={e=>e.target.style.borderColor="var(--copper)"} onBlur={e=>e.target.style.borderColor="var(--border-2)"}/>
-                  </div>
+              <form className="ck-card" onSubmit={(e) => { e.preventDefault(); siguientePaso(); }}>
+                <div className="ck-card-head">
+                  <div className="ck-card-title">¿Cómo te contactamos?</div>
+                  <div className="ck-card-sub">Con esto armamos el envío y te mandamos la confirmación del pedido.</div>
                 </div>
-                <button onClick={siguientePaso} style={{ width:"100%", marginTop:24, background:"var(--copper)", color:"#0f0f0f", border:"none", borderRadius:10, padding:15, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"var(--font-body)", letterSpacing:"0.08em", textTransform:"uppercase" }}>
-                  Continuar →
-                </button>
-              </div>
+
+                <div className="ck-campos">
+                  <div className="ck-2col">
+                    {campo({ id: "nombre", label: "Nombre", valor: nombre, set: setNombre, placeholder: "Tu nombre", autoComplete: "given-name" })}
+                    {campo({ id: "apellido", label: "Apellido", valor: apellido, set: setApellido, placeholder: "Tu apellido", autoComplete: "family-name" })}
+                  </div>
+                  {campo({ id: "dni", label: "DNI", valor: dni, set: setDni, placeholder: "Sin puntos ni guiones", inputMode: "numeric" })}
+                  {campo({ id: "email", label: "Email", valor: email, set: setEmail, placeholder: "tu@email.com", type: "email", autoComplete: "email", inputMode: "email", ayuda: "Te llega el comprobante a este correo." })}
+                  {campo({ id: "telefono", label: "WhatsApp", valor: telefono, set: setTelefono, placeholder: "381 544 0596", type: "tel", autoComplete: "tel", inputMode: "tel", ayuda: "Por acá coordinamos la entrega." })}
+                </div>
+
+                <div className="ck-acciones">
+                  <button type="submit" className="ck-btn">Continuar al envío {ico.seguir}</button>
+                </div>
+              </form>
             )}
 
             {/* PASO 2 — Envío */}
             {paso === 2 && (
-              <div style={{ background:"var(--bg-2)", border:"1px solid var(--border)", borderRadius:14, padding:24 }}>
-                <div className="t-label" style={{ marginBottom:20 }}>Método de envío</div>
-
-                {/* Provincia PRIMERO — antes de mostrar opciones */}
-                <div style={{ marginBottom:20 }}>
-                  <label style={labelStyle}>Provincia</label>
-                  <select value={provincia} onChange={e=>setProvincia(e.target.value)} style={{ ...inputStyle, appearance:"none" as any }}
-                    onFocus={e=>e.target.style.borderColor="var(--copper)"} onBlur={e=>e.target.style.borderColor="var(--border-2)"}>
-                    <option value="">Seleccioná tu provincia</option>
-                    {PROVINCIAS.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
+              <form className="ck-card" onSubmit={(e) => { e.preventDefault(); siguientePaso(); }}>
+                <div className="ck-card-head">
+                  <div className="ck-card-title">¿Dónde lo recibís?</div>
+                  <div className="ck-card-sub">Primero la provincia: según dónde estés cambia el costo y el correo.</div>
                 </div>
 
-                {/* Selector tipo envío — solo si ya eligió provincia */}
-                {!provincia ? (
-                  <div style={{ textAlign:"center", padding:"20px 0", color:"var(--text-3)", fontSize:13 }}>
-                    Seleccioná tu provincia para ver las opciones de envío
+                {/* Provincia PRIMERO — define las opciones y el costo */}
+                <div className="ck-campo" style={{ marginBottom: 20 }}>
+                  <label className="ck-label" htmlFor="provincia">Provincia</label>
+                  <div className="ck-select">
+                    <select
+                      id="provincia"
+                      className={`ck-input${errores.provincia ? " err" : ""}`}
+                      value={provincia}
+                      onChange={e => { setProvincia(e.target.value); setErrores(prev => ({ ...prev, provincia: "" })); }}
+                    >
+                      <option value="">Seleccioná tu provincia</option>
+                      {PROVINCIAS.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                    {ico.chevron}
                   </div>
-                ) : !PROVINCIAS_FIXY.includes(provincia) ? (
-                  <div className="envio-cards-grid" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:24 }}>
-                    {([["domicilio","🏠","Envío a domicilio","Recibilo en tu casa"],["sucursal","📦","Retiro en sucursal","Urbano Express"]] as const).map(([tipo, icon, titulo, sub]) => (
-                      <div key={tipo} className="envio-card"
-                        onClick={() => setTipoEnvio(tipo)}
-                        style={{ background:"var(--bg-3)", border:`2px solid ${tipoEnvio===tipo?"var(--copper)":"var(--border-2)"}`, borderRadius:10, padding:16, textAlign:"center", position:"relative" }}>
-                        {tipo === "sucursal" && <div style={{ position:"absolute", top:-10, left:"50%", transform:"translateX(-50%)", background:"var(--green)", color:"#0f0f0f", fontSize:9, fontWeight:800, letterSpacing:"0.08em", textTransform:"uppercase", padding:"3px 10px", borderRadius:20, whiteSpace:"nowrap" }}>Recomendado</div>}
-                        <div style={{ fontSize:28, marginBottom:8 }}>{icon}</div>
-                        <div style={{ fontSize:13, fontWeight:600, color:"var(--text)", marginBottom:2 }}>{titulo}</div>
-                        <div className="t-xs">{sub}</div>
-                        <div style={{ marginTop:8, fontSize:13, fontWeight:700, color: tipo==="sucursal" ? "var(--green)" : getCostoEnvio(provincia) > 0 ? "var(--copper)" : "var(--green)" }}>
-                          {tipo === "sucursal" ? "Gratis" : getCostoFormateado(provincia)}
-                        </div>
-                      </div>
-                    ))}
+                  {errores.provincia && <div className="ck-field-err">{ico.alerta}{errores.provincia}</div>}
+                </div>
+
+                {/* Opciones de envío — solo cuando ya hay provincia */}
+                {!provincia ? (
+                  <div className="ck-vacio-envio">Elegí tu provincia para ver las opciones de envío y su costo.</div>
+                ) : PROVINCIAS_FIXY.includes(provincia) ? (
+                  <div className="ck-envios">
+                    <div className="ck-envio on">
+                      <span className="ck-envio-radio" aria-hidden />
+                      <span className="ck-envio-ico">{ico.rayo}</span>
+                      <span className="ck-envio-t">Envío a domicilio</span>
+                      <span className="ck-envio-s">Fixy — Express en CABA y GBA</span>
+                      <span className="ck-envio-p free">Gratis</span>
+                    </div>
                   </div>
                 ) : (
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:12, marginBottom:24 }}>
-                    <div className="envio-card"
-                      onClick={() => setTipoEnvio("domicilio")}
-                      style={{ background:"var(--bg-3)", border:`2px solid var(--copper)`, borderRadius:10, padding:16, textAlign:"center" }}>
-                      <div style={{ fontSize:28, marginBottom:8 }}>⚡</div>
-                      <div style={{ fontSize:13, fontWeight:600, color:"var(--text)", marginBottom:2 }}>Envío a domicilio</div>
-                      <div className="t-xs">{provincia ? "Fixy — Express en CABA" : "Seleccioná tu provincia primero"}</div>
-                      <div style={{ marginTop:8, fontSize:13, fontWeight:700, color:"var(--green)" }}>Gratis</div>
-                    </div>
+                  <div className="ck-envios" role="radiogroup" aria-label="Método de envío">
+                    {([
+                      ["domicilio", ico.casa, "Envío a domicilio", "Recibilo en tu casa"],
+                      ["sucursal", ico.caja, "Retiro en sucursal", "Urbano Express"],
+                    ] as const).map(([tipo, icono, titulo, sub]) => {
+                      const activo = tipoEnvio === tipo;
+                      const gratis = tipo === "sucursal" || getCostoEnvio(provincia) === 0;
+                      return (
+                        <button
+                          type="button"
+                          key={tipo}
+                          role="radio"
+                          aria-checked={activo}
+                          className={`ck-envio${activo ? " on" : ""}`}
+                          onClick={() => setTipoEnvio(tipo)}
+                        >
+                          {tipo === "sucursal" && <span className="ck-envio-tag">Recomendado</span>}
+                          <span className="ck-envio-radio" aria-hidden />
+                          <span className="ck-envio-ico">{icono}</span>
+                          <span className="ck-envio-t">{titulo}</span>
+                          <span className="ck-envio-s">{sub}</span>
+                          <span className={`ck-envio-p${gratis ? " free" : ""}`}>
+                            {tipo === "sucursal" ? "Gratis" : getCostoFormateado(provincia)}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
 
                 {tipoEnvio === "domicilio" && provincia && (
-                  <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-                    <div>
-                      <label style={labelStyle}>Dirección</label>
-                      <input type="text" value={direccion} onChange={e=>setDireccion(e.target.value)} placeholder="Calle y número" style={inputStyle}
-                        onFocus={e=>e.target.style.borderColor="var(--copper)"} onBlur={e=>e.target.style.borderColor="var(--border-2)"}/>
+                  <div className="ck-campos">
+                    {campo({ id: "direccion", label: "Dirección", valor: direccion, set: setDireccion, placeholder: "Calle y número", autoComplete: "street-address" })}
+                    {campo({ id: "apartamento", label: "Piso / Depto", valor: apartamento, set: setApartamento, placeholder: "Ej: 3° B", opcional: true })}
+                    <div className="ck-2col">
+                      {campo({ id: "ciudad", label: "Ciudad", valor: ciudad, set: setCiudad, placeholder: "Tu ciudad", autoComplete: "address-level2" })}
+                      {campo({ id: "codigoPostal", label: "Código postal", valor: codigoPostal, set: setCodigoPostal, placeholder: "Ej: 4000", autoComplete: "postal-code", inputMode: "numeric" })}
                     </div>
-                    <div>
-                      <label style={labelStyle}>Piso / Depto <span style={{ color:"var(--text-3)", fontWeight:400 }}>(opcional)</span></label>
-                      <input type="text" value={apartamento} onChange={e=>setApartamento(e.target.value)} placeholder="Ej: 3° B" style={inputStyle}
-                        onFocus={e=>e.target.style.borderColor="var(--copper)"} onBlur={e=>e.target.style.borderColor="var(--border-2)"}/>
-                    </div>
-                    <div className="form-2col" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                      <div>
-                        <label style={labelStyle}>Ciudad</label>
-                        <input type="text" value={ciudad} onChange={e=>setCiudad(e.target.value)} placeholder="Tu ciudad" style={inputStyle}
-                          onFocus={e=>e.target.style.borderColor="var(--copper)"} onBlur={e=>e.target.style.borderColor="var(--border-2)"}/>
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Código postal</label>
-                        <input type="text" value={codigoPostal} onChange={e=>setCodigoPostal(e.target.value)} placeholder="Ej: 4000" style={inputStyle}
-                          onFocus={e=>e.target.style.borderColor="var(--copper)"} onBlur={e=>e.target.style.borderColor="var(--border-2)"}/>
-                      </div>
-                    </div>
-                    {provincia && (
-                      <div style={{ background:"rgba(76,175,138,0.06)", border:"1px solid rgba(76,175,138,0.15)", borderRadius:8, padding:"10px 14px", display:"flex", alignItems:"center", gap:10 }}>
-                        <span style={{ fontSize:20 }}>{getTransportista(provincia).emoji}</span>
+                    {transportista && (
+                      <div className="ck-nota">
+                        {ico.camion}
                         <div>
-                          <div style={{ fontSize:13, fontWeight:600, color:"var(--text)" }}>Tu envío va con {getTransportista(provincia).nombre}</div>
-                          <div className="t-xs">{getTransportista(provincia).desc}</div>
+                          <b>Tu envío va con {transportista.nombre}</b>
+                          <span>{transportista.desc}</span>
                         </div>
                       </div>
                     )}
+                    {campo({ id: "notas", label: "Notas para el repartidor", valor: notas, set: setNotas, placeholder: "Timbre, horario, referencias…", opcional: true, area: true })}
                   </div>
                 )}
 
-                {tipoEnvio === "sucursal" && (
-                  <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-                    <div style={{ background:"rgba(212,132,90,0.08)", border:"1px solid rgba(212,132,90,0.2)", borderRadius:8, padding:"12px 16px" }}>
-                      <p className="t-sm" style={{ marginBottom:8 }}>Buscá la sucursal Urbano Express más cercana y pegá la dirección abajo.</p>
-                      <a href="https://www.urbano.com.ar/sucursales" target="_blank" rel="noopener noreferrer"
-                        style={{ display:"inline-flex", alignItems:"center", gap:6, color:"var(--copper)", fontSize:13, fontWeight:600 }}>
-                        📦 Ver sucursales Urbano Express →
+                {tipoEnvio === "sucursal" && provincia && (
+                  <div className="ck-campos">
+                    <div className="ck-info">
+                      <p>Buscá la sucursal de Urbano Express más cercana y pegá la dirección acá abajo.</p>
+                      <a href="https://www.urbano.com.ar/sucursales" target="_blank" rel="noopener noreferrer">
+                        Ver sucursales Urbano Express →
                       </a>
                     </div>
-                    <div>
-                      <label style={labelStyle}>Dirección de la sucursal elegida</label>
-                      <textarea value={sucursalInfo} onChange={e=>setSucursalInfo(e.target.value)}
-                        placeholder="Ej: Av. San Martín 1234, San Miguel de Tucumán, Tucumán"
-                        rows={3}
-                        style={{ ...inputStyle, resize:"none" as any }}
-                        onFocus={e=>e.target.style.borderColor="var(--copper)"} onBlur={e=>e.target.style.borderColor="var(--border-2)"}/>
-                    </div>
+                    {campo({ id: "sucursalInfo", label: "Dirección de la sucursal elegida", valor: sucursalInfo, set: setSucursalInfo, placeholder: "Ej: Av. San Martín 1234, San Miguel de Tucumán, Tucumán", area: true })}
+                    {campo({ id: "notas", label: "Comentario", valor: notas, set: setNotas, placeholder: "Algo que debamos saber…", opcional: true, area: true })}
                   </div>
                 )}
 
-                <div style={{ display:"flex", gap:10, marginTop:24 }}>
-                  <button onClick={() => { setPaso(1); setError(""); }}
-                    style={{ flex:1, background:"transparent", border:"1px solid var(--border-2)", color:"var(--text-2)", borderRadius:10, padding:14, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"var(--font-body)" }}>
-                    ← Volver
-                  </button>
-                  <button onClick={siguientePaso}
-                    style={{ flex:2, background:"var(--copper)", color:"#0f0f0f", border:"none", borderRadius:10, padding:14, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"var(--font-body)", letterSpacing:"0.08em", textTransform:"uppercase" }}>
-                    Ir al pago →
-                  </button>
+                <div className="ck-acciones">
+                  <button type="button" className="ck-btn-ghost" onClick={() => volverA(1)}>{ico.volver} Volver</button>
+                  <button type="submit" className="ck-btn">Continuar al pago {ico.seguir}</button>
                 </div>
-              </div>
+              </form>
             )}
 
             {/* PASO 3 — Pago */}
             {paso === 3 && (
-              <div style={{ background:"var(--bg-2)", border:"1px solid var(--border)", borderRadius:14, padding:24 }}>
-                <div className="t-label" style={{ marginBottom:20 }}>Método de pago</div>
-                <div style={{ background:"rgba(76,175,138,0.06)", border:"1px solid rgba(76,175,138,0.15)", borderRadius:8, padding:"10px 14px", marginBottom:20, display:"flex", alignItems:"center", gap:8 }}>
-                  <span style={{ fontSize:14 }}>🔒</span>
-                  <span className="t-sm" style={{ color:"var(--green)" }}>Pago 100% seguro con MercadoPago</span>
+              <div className="ck-card">
+                <div className="ck-card-head">
+                  <div className="ck-card-title">Pagá con tarjeta</div>
+                  <div className="ck-card-sub">MercadoPago procesa el cobro. No vemos ni guardamos los datos de tu tarjeta.</div>
                 </div>
-                {enviando && (
-                  <div style={{ textAlign:"center", padding:"20px 0" }}>
-                    <div style={{ width:32, height:32, border:"2px solid var(--border-2)", borderTopColor:"var(--copper)", borderRadius:"50%", animation:"spin 0.8s linear infinite", margin:"0 auto 12px" }} />
+
+                <div className="ck-recap">
+                  <div className="ck-recap-row">
+                    <div>
+                      <div className="ck-recap-k">Tus datos</div>
+                      <div className="ck-recap-v">
+                        <b>{nombre} {apellido}</b><br />
+                        {email} · {telefono}
+                      </div>
+                    </div>
+                    <button type="button" className="ck-recap-edit" onClick={() => volverA(1)}>Editar</button>
+                  </div>
+                  <div className="ck-recap-row">
+                    <div>
+                      <div className="ck-recap-k">{tipoEnvio === "domicilio" ? "Envío a domicilio" : "Retiro en sucursal"}</div>
+                      <div className="ck-recap-v">
+                        {tipoEnvio === "domicilio"
+                          ? `${direccion}${apartamento ? `, ${apartamento}` : ""}, ${ciudad}, ${provincia}`
+                          : sucursalInfo}
+                      </div>
+                    </div>
+                    <button type="button" className="ck-recap-edit" onClick={() => volverA(2)}>Editar</button>
+                  </div>
+                </div>
+
+                {enviando ? (
+                  <div className="ck-cargando">
+                    <div className="ck-spin" />
                     <p className="t-sm">Procesando tu pago...</p>
-                    <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
                   </div>
-                )}
-                <div id="cardPaymentBrick_container" />
-                <button onClick={() => { setPaso(2); setError(""); }}
-                  style={{ width:"100%", marginTop:16, background:"transparent", border:"1px solid var(--border-2)", color:"var(--text-2)", borderRadius:10, padding:12, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"var(--font-body)" }}>
-                  ← Volver
-                </button>
-              </div>
-            )}
-          </div>
+                ) : !brickListo && !error ? (
+                  <div className="ck-cargando">
+                    <div className="ck-spin" />
+                    <p className="t-sm">Cargando el formulario de pago seguro...</p>
+                  </div>
+                ) : null}
 
-          {/* Resumen */}
-          <div className="resumen" style={{ background:"var(--bg-2)", border:"1px solid var(--border)", borderRadius:14, padding:20, position:"sticky", top:80, overflow:"hidden", maxWidth:"100%" }}>
-            <div className="t-label" style={{ marginBottom:16 }}>Resumen del pedido</div>
+                <div className="ck-brick" id="cardPaymentBrick_container" style={{ display: enviando ? "none" : "block" }} />
 
-            <div style={{ display:"flex", flexDirection:"column", gap:12, marginBottom:16 }}>
-              {items.map(item => (
-                <div key={item.id} style={{ display:"flex", gap:12, alignItems:"center" }}>
-                  <div style={{ width:52, height:52, borderRadius:8, overflow:"hidden", background:"var(--bg-3)", flexShrink:0 }}>
-                    <img src={item.imagen} alt={item.nombre} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                  </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div className="t-sm" style={{ color:"var(--text)", fontWeight:500, lineHeight:1.3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.nombre}</div>
-                    <div className="t-xs" style={{ marginTop:2 }}>Cant: {item.cantidad}</div>
-                  </div>
-                  <div style={{ fontSize:13, fontWeight:700, color:"var(--text)", flexShrink:0, whiteSpace:"nowrap" }}>${(item.precioNum * item.cantidad).toLocaleString("es-AR")}</div>
+                <div className="ck-tarjetas">
+                  {ico.escudo} Aceptamos tarjetas de crédito y débito · Hasta 12 cuotas
                 </div>
-              ))}
-            </div>
 
-            <div style={{ borderTop:"1px solid var(--border)", paddingTop:14, display:"flex", flexDirection:"column", gap:8 }}>
-              <div style={{ display:"flex", justifyContent:"space-between" }}>
-                <span className="t-sm">Subtotal</span>
-                <span className="t-sm" style={{ color:"var(--text)", fontWeight:500 }}>${subtotal.toLocaleString("es-AR")}</span>
-              </div>
-              <div style={{ display:"flex", justifyContent:"space-between" }}>
-                <span className="t-sm">Envío</span>
-                <span className="t-sm" style={{ color: costoEnvio === 0 ? "var(--green)" : "var(--copper)", fontWeight:600 }}>
-                  {!provincia ? "—" : tipoEnvio === "sucursal" ? "Gratis" : getCostoFormateado(provincia)}
-                </span>
-              </div>
-              <div style={{ display:"flex", justifyContent:"space-between", borderTop:"1px solid var(--border)", paddingTop:10, marginTop:4 }}>
-                <span style={{ fontSize:15, fontWeight:700, color:"var(--text)" }}>Total</span>
-                <span style={{ fontSize:16, fontWeight:800, color:"var(--text)", fontFamily:"var(--font-display)", whiteSpace:"nowrap" }}>${totalFormateado}</span>
-              </div>
-            </div>
-
-            {paso > 1 && (
-              <div style={{ marginTop:14, borderTop:"1px solid var(--border)", paddingTop:14 }}>
-                <div className="t-xs" style={{ marginBottom:6 }}>Entrega a</div>
-                <div className="t-sm" style={{ color:"var(--text)", fontWeight:500 }}>{nombre} {apellido}</div>
-                {paso > 2 && (
-                  <div className="t-xs" style={{ marginTop:4 }}>
-                    {tipoEnvio === "domicilio" ? `${direccion}, ${ciudad}, ${provincia}` : `Sucursal: ${sucursalInfo}`}
-                  </div>
-                )}
+                <div className="ck-acciones">
+                  <button type="button" className="ck-btn-ghost" onClick={() => volverA(2)} disabled={enviando}>
+                    {ico.volver} Volver al envío
+                  </button>
+                </div>
               </div>
             )}
           </div>
+
+          {/* ══════════ RESUMEN ══════════ */}
+          <aside className="ck-res">
+            <button type="button" className="ck-res-top" onClick={() => setResumenAbierto(v => !v)}>
+              <span className="ck-res-title">Resumen</span>
+              <span className="ck-res-toggle">
+                {fmt(total)}
+                <span style={{ display: "flex", transform: resumenAbierto ? "rotate(180deg)" : "none", transition: "transform .2s" }}>
+                  {ico.chevron}
+                </span>
+              </span>
+            </button>
+
+            <div className={`ck-res-body${resumenAbierto ? " on" : ""}`}>
+              <div className="ck-items">
+                {items.map(item => (
+                  <div key={item.id} className="ck-item">
+                    <div className="ck-item-img">
+                      <img src={item.imagen} alt={item.nombre} />
+                      <span className="ck-item-qty">{item.cantidad}</span>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="ck-item-name">{item.nombre}</div>
+                    </div>
+                    <div className="ck-item-precio">{fmt(item.precioNum * item.cantidad)}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                <div className="ck-linea"><span>Subtotal</span><b>{fmt(subtotal)}</b></div>
+                <div className="ck-linea">
+                  <span>Envío</span>
+                  {!provincia
+                    ? <b style={{ color: "var(--text-3)" }}>A calcular</b>
+                    : costoEnvio === 0
+                      ? <b className="free">Gratis</b>
+                      : <b>{getCostoFormateado(provincia)}</b>}
+                </div>
+                <div className="ck-total">
+                  <span>Total</span>
+                  <b>{fmt(total)}</b>
+                </div>
+              </div>
+
+              {paso > 1 && nombre && (
+                <div className="ck-entrega">
+                  <div className="ck-entrega-t">Entrega a</div>
+                  <div className="ck-entrega-n">{nombre} {apellido}</div>
+                  {paso > 2 && (
+                    <div className="ck-entrega-d">
+                      {tipoEnvio === "domicilio"
+                        ? `${direccion}${apartamento ? `, ${apartamento}` : ""}, ${ciudad}, ${provincia}`
+                        : `Sucursal: ${sucursalInfo}`}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="ck-benef">
+                <div>{ico.escudo} Garantía de 6 meses</div>
+                <div>{ico.camion} Seguimiento del envío por email</div>
+                <div>{ico.candado} Pago protegido con MercadoPago</div>
+              </div>
+            </div>
+          </aside>
         </div>
       </div>
     </div>

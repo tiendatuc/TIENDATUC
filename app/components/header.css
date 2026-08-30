@@ -1,0 +1,435 @@
+/* ══════════════════════════════════════
+   HEADER DE TIENDA
+   Fila 1 promos · Fila 2 buscador · Fila 3 categorías
+
+   Sin animaciones: nada de keyframes, transforms ni transiciones de
+   alto/posición. Solo cambios de color en hover. Las animaciones acá
+   generaban parpadeos y recortes.
+══════════════════════════════════════ */
+
+.hd {
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 10px 34px -26px rgba(0, 0, 0, 0.45);
+}
+
+/* El fondo con blur va en una capa aparte a propósito: `backdrop-filter`
+   sobre .hd la convertiría en bloque contenedor de sus descendientes
+   position:fixed (el panel del carrito y el del menú mobile), que
+   quedarían anclados al header en vez de a la ventana. */
+.hd::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--nav-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  pointer-events: none;
+}
+
+/* ── Fila 1 · barra de beneficios (estática) ── */
+.hd-promo {
+  height: 36px;
+  background: var(--copper);
+}
+
+.hd-promo-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  height: 36px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+}
+
+.hd-promo-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--on-accent);
+  white-space: nowrap;
+}
+.hd-promo-item svg { flex-shrink: 0; opacity: 0.9; }
+.hd-promo-item b { font-weight: 800; }
+
+.hd-promo-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--on-accent);
+  white-space: nowrap;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ── Fila 2 · barra principal ─────────── */
+.hd-main {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 66px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+/* logo */
+.hd-logo {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  flex-shrink: 0;
+  line-height: 1;
+  color: var(--text);
+}
+.hd-logo-name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 4.5px;
+  text-transform: uppercase;
+}
+.hd-logo-sub {
+  font-family: var(--font-body);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* ── Buscador ─────────────────────────── */
+.hd-search {
+  position: relative;
+  flex: 1;
+  max-width: 520px;
+  margin: 0 auto;
+}
+.hd-search-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 42px;
+  padding: 0 12px 0 15px;
+  border-radius: 999px;
+  background: var(--bg-3);
+  border: 1.5px solid transparent;
+  transition: border-color 0.18s, background 0.18s;
+}
+.hd-search.is-open .hd-search-box,
+.hd-search-box:focus-within {
+  background: var(--surface);
+  border-color: var(--copper);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+.hd-search-box > svg { flex-shrink: 0; color: var(--text-3); }
+.hd-search-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+.hd-search-input::placeholder { color: var(--text-3); font-weight: 400; }
+.hd-search-clear {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.hd-search-clear:hover { background: var(--hover); color: var(--text); }
+
+/* panel de sugerencias */
+.hd-sug {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  right: 0;
+  z-index: 300;
+  background: var(--menu-bg);
+  border: 1px solid var(--border-2);
+  border-radius: 16px;
+  box-shadow: var(--toast-shadow);
+  overflow: hidden;
+  padding: 7px;
+}
+.hd-sug-head {
+  padding: 8px 10px 7px;
+  font-family: var(--font-body);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.hd-sug-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.13s;
+}
+.hd-sug-item.is-active,
+.hd-sug-item:hover { background: var(--hover); }
+.hd-sug-thumb {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--img-bg);
+}
+.hd-sug-thumb img { width: 100%; height: 100%; object-fit: contain; padding: 3px; }
+.hd-sug-info { flex: 1; min-width: 0; }
+.hd-sug-name {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hd-sug-price {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--copper);
+  margin-top: 2px;
+}
+.hd-sug-empty {
+  padding: 22px 12px;
+  text-align: center;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-3);
+}
+.hd-sug-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 5px;
+  padding: 11px;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--copper);
+  text-decoration: none;
+}
+.hd-sug-all:hover { background: var(--accent-soft); }
+
+/* ── Acciones (tema, cuenta, carrito) ─── */
+.hd-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.hd-actions .nav-icon-btn { width: 38px; height: 38px; border-radius: 10px; }
+.hd-actions .cart-btn {
+  height: 38px;
+  padding: 0 15px;
+  border-radius: 10px;
+  border-color: transparent;
+  background: var(--copper);
+  color: var(--on-accent);
+}
+.hd-actions .cart-btn:hover {
+  background: var(--copper-dim);
+  border-color: transparent;
+}
+.hd-actions .cart-count {
+  background: var(--text);
+  color: var(--bg-2);
+}
+
+/* ── Fila 3 · categorías ──────────────── */
+/* Sin overflow:hidden ni colapso: recortaba el desplegable de categorías. */
+.hd-cats {
+  border-top: 1px solid var(--border);
+  height: 44px;
+}
+
+.hd-cats-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hd-cat {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 13px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.15s, background 0.15s;
+}
+.hd-cat:hover, .hd-cat.is-open { color: var(--copper); background: var(--accent-soft); }
+.hd-cat.is-open .hd-cat-caret { transform: rotate(180deg); }
+
+.hd-cat-hot {
+  margin-left: 5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--red-soft);
+  color: var(--red);
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hd-cats-note {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.hd-cats-note svg { color: var(--green); flex-shrink: 0; }
+
+/* menú desplegable de categorías */
+.hd-mega {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 300;
+  min-width: 260px;
+  padding: 7px;
+  background: var(--menu-bg);
+  border: 1px solid var(--border-2);
+  border-radius: 14px;
+  box-shadow: var(--toast-shadow);
+}
+.hd-mega-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 11px;
+  border-radius: 10px;
+  text-decoration: none;
+  transition: background 0.13s;
+}
+.hd-mega-item:hover { background: var(--hover); }
+.hd-mega-ico {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--copper);
+}
+.hd-mega-title {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.25;
+}
+.hd-mega-desc {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-3);
+  line-height: 1.35;
+  margin-top: 1px;
+}
+
+/* ── Responsive ───────────────────────── */
+@media (max-width: 900px) {
+  .hd-search { max-width: none; }
+  .hd-logo-sub { display: none; }
+}
+
+@media (max-width: 720px) {
+  .hd-cats { display: none; }
+  .hd-promo-side { display: none; }
+  .hd-promo-inner { padding: 0 16px; gap: 18px; }
+
+  .hd-main {
+    height: auto;
+    padding: 10px 16px 12px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  /* el buscador pasa a una segunda línea a lo ancho */
+  .hd-search { order: 3; flex-basis: 100%; max-width: none; margin: 0; }
+  .hd-search-box { height: 40px; }
+
+  .hd-logo { margin-right: auto; }
+  .hd-logo-name { font-size: 14px; letter-spacing: 3px; }
+
+  .hd-actions .cart-btn { padding: 0 12px; }
+  .hd-sug { left: 0; right: 0; }
+}
+
+/* En pantallas chicas queda solo el beneficio principal, para que la
+   barra no desborde ni parta el texto en dos líneas. */
+@media (max-width: 560px) {
+  .hd-promo-item + .hd-promo-item { display: none; }
+  .hd-promo-item { font-size: 11.5px; }
+}

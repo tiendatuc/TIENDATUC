@@ -6,7 +6,7 @@ export default function Devoluciones() {
         <h1 style={{ marginBottom:8 }}>Política de Devoluciones</h1>
         <p className="t-sm" style={{ marginBottom:40 }}>Última actualización: junio de 2026</p>
 
-        <div style={{ background:"rgba(76,175,138,0.06)", border:"1px solid rgba(76,175,138,0.2)", borderRadius:12, padding:"20px 24px", marginBottom:40 }}>
+        <div style={{ background:"var(--green-soft)", border:"1px solid color-mix(in srgb, var(--green) 25%, transparent)", borderRadius:12, padding:"20px 24px", marginBottom:40 }}>
           <p className="t-sm" style={{ color:"var(--green)", fontWeight:600, marginBottom:4 }}>✓ Devoluciones sin complicaciones</p>
           <p className="t-sm">Si tu producto llega con algún defecto o no es lo que esperabas, lo resolvemos. Contactanos por WhatsApp y te guiamos en el proceso.</p>
         </div>

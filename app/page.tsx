@@ -11,7 +11,7 @@ const supabase = createClient(
 export default async function Home() {
   const { data: productos } = await supabase
     .from("productos")
-    .select("id, slug, nombre, descripcion, precio, precio_num, cuotas, envio_gratis, imagenes")
+    .select("id, slug, nombre, descripcion, precio, precio_anterior, precio_num, cuotas, envio_gratis, imagenes")
     .eq("activo", true)
     .order("id");
 
@@ -21,6 +21,7 @@ export default async function Home() {
     nombre: p.nombre,
     descripcion: p.descripcion,
     precio: p.precio,
+    precioAnterior: p.precio_anterior || "",
     precioNum: p.precio_num,
     cuotas: p.cuotas,
     envioGratis: p.envio_gratis,

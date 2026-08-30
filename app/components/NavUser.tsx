@@ -61,49 +61,43 @@ export default function NavUser() {
 
   return (
     <div ref={ref} style={{ position:"relative" }}>
-      {/* Botón avatar + nombre */}
       <button
         onClick={() => setMenuOpen(!menuOpen)}
-        style={{ display:"flex", alignItems:"center", gap:8, background:"rgba(232,228,224,0.06)", border:"1px solid rgba(232,228,224,0.1)", borderRadius:8, padding:"5px 10px 5px 5px", cursor:"pointer", transition:"all 0.15s" }}
+        style={{ display:"flex", alignItems:"center", gap:8, background:"var(--hover)", border:"1px solid var(--border-2)", borderRadius:8, padding:"5px 10px 5px 5px", cursor:"pointer", transition:"all 0.15s" }}
         onMouseEnter={e => e.currentTarget.style.borderColor="var(--copper)"}
-        onMouseLeave={e => e.currentTarget.style.borderColor="rgba(232,228,224,0.1)"}
+        onMouseLeave={e => e.currentTarget.style.borderColor="var(--border-2)"}
       >
-        {/* Avatar */}
-        <div style={{ width:28, height:28, borderRadius:"50%", background:"linear-gradient(135deg, var(--copper), var(--gold))", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:"#0f0f0f", flexShrink:0 }}>
+        <div style={{ width:28, height:28, borderRadius:"50%", background:"var(--copper)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:"var(--on-accent)", flexShrink:0 }}>
           {iniciales}
         </div>
-        {/* Nombre — solo en desktop */}
         {nombreCorto && (
           <span style={{ fontSize:13, fontWeight:500, color:"var(--text)", maxWidth:80, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}
             className="nav-user-name">
             {nombreCorto}
           </span>
         )}
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(232,228,224,0.4)" strokeWidth="2.5" strokeLinecap="round">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="2.5" strokeLinecap="round">
           <path d="M6 9l6 6 6-6"/>
         </svg>
       </button>
 
-      {/* Dropdown */}
       {menuOpen && (
-        <div style={{ position:"absolute", top:"calc(100% + 8px)", right:0, background:"#111", border:"1px solid rgba(232,228,224,0.1)", borderRadius:10, minWidth:180, boxShadow:"0 16px 48px rgba(0,0,0,0.6)", zIndex:500, overflow:"hidden" }}>
-          {/* Info */}
-          <div style={{ padding:"12px 14px", borderBottom:"1px solid rgba(232,228,224,0.07)" }}>
+        <div style={{ position:"absolute", top:"calc(100% + 8px)", right:0, background:"var(--menu-bg)", border:"1px solid var(--border-2)", borderRadius:10, minWidth:180, boxShadow:"var(--toast-shadow)", zIndex:500, overflow:"hidden" }}>
+          <div style={{ padding:"12px 14px", borderBottom:"1px solid var(--border)" }}>
             <div style={{ fontSize:13, fontWeight:600, color:"var(--text)", marginBottom:2 }}>{perfil?.nombre || "Mi cuenta"}</div>
             <div style={{ fontSize:11, color:"var(--text-3)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{usuario.email}</div>
           </div>
-          {/* Links */}
           <a href="/cuenta" onClick={() => setMenuOpen(false)}
-            style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", fontSize:13, color:"rgba(232,228,224,0.7)", textDecoration:"none", transition:"background 0.15s" }}
-            onMouseEnter={e => e.currentTarget.style.background="rgba(232,228,224,0.05)"}
+            style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", fontSize:13, color:"var(--text-2)", textDecoration:"none", transition:"background 0.15s" }}
+            onMouseEnter={e => e.currentTarget.style.background="var(--hover)"}
             onMouseLeave={e => e.currentTarget.style.background="transparent"}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             Mi perfil
           </a>
           <a href="/cuenta" onClick={() => setMenuOpen(false)}
-            style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", fontSize:13, color:"rgba(232,228,224,0.7)", textDecoration:"none", transition:"background 0.15s", borderBottom:"1px solid rgba(232,228,224,0.07)" }}
-            onMouseEnter={e => e.currentTarget.style.background="rgba(232,228,224,0.05)"}
+            style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", fontSize:13, color:"var(--text-2)", textDecoration:"none", transition:"background 0.15s", borderBottom:"1px solid var(--border)" }}
+            onMouseEnter={e => e.currentTarget.style.background="var(--hover)"}
             onMouseLeave={e => e.currentTarget.style.background="transparent"}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
@@ -111,7 +105,7 @@ export default function NavUser() {
           </a>
           <button onClick={handleLogout}
             style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px", fontSize:13, color:"var(--red)", background:"none", border:"none", cursor:"pointer", width:"100%", fontFamily:"var(--font-body)", transition:"background 0.15s" }}
-            onMouseEnter={e => e.currentTarget.style.background="rgba(224,85,85,0.06)"}
+            onMouseEnter={e => e.currentTarget.style.background="var(--red-soft)"}
             onMouseLeave={e => e.currentTarget.style.background="transparent"}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>

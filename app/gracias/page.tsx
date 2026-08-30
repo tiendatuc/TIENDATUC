@@ -1,38 +1,66 @@
 export default function Gracias() {
   return (
     <div style={{
-      minHeight: "80vh", display: "flex",
-      alignItems: "center", justifyContent: "center",
-      textAlign: "center", padding: "40px 24px",
-      background: "#0F0F0F",
+      minHeight: "80vh",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      textAlign: "center",
+      padding: "48px 24px",
+      background: "var(--bg)",
     }}>
-      <div>
+      <div style={{
+        maxWidth: 440,
+        background: "var(--bg-2)",
+        border: "1px solid var(--border)",
+        borderRadius: 20,
+        padding: "40px 32px",
+        boxShadow: "var(--card-shadow)",
+      }}>
         <div style={{
-          width: 72, height: 72, borderRadius: "50%",
-          background: "#4CAF8A",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 32, margin: "0 auto 24px",
+          width: 64,
+          height: 64,
+          borderRadius: 18,
+          background: "var(--green-soft)",
+          color: "var(--green)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 28,
+          fontWeight: 800,
+          margin: "0 auto 22px",
         }}>✓</div>
+        <div style={{
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: "0.12em",
+          textTransform: "uppercase",
+          color: "var(--copper)",
+          marginBottom: 8,
+        }}>Pedido confirmado</div>
         <h1 style={{
-          fontFamily: "'Syne', sans-serif",
-          fontSize: 32, fontWeight: 800,
-          color: "#E8E4E0", marginBottom: 12,
+          fontFamily: "var(--font-display)",
+          fontSize: 28,
+          fontWeight: 800,
+          letterSpacing: "-0.03em",
+          color: "var(--text)",
+          marginBottom: 12,
         }}>¡Gracias por tu compra!</h1>
         <p style={{
-          fontSize: 15, color: "rgba(232,228,224,0.5)",
-          lineHeight: 1.7, marginBottom: 32,
+          fontSize: 15,
+          color: "var(--text-2)",
+          lineHeight: 1.7,
+          marginBottom: 28,
         }}>
-          Tu pago fue procesado correctamente.<br />
-          Te contactamos por WhatsApp para coordinar el envío.
+          El pago salió bien. En un rato te escribimos por WhatsApp para coordinar el envío.
         </p>
-        <a href="/" style={{
-          display: "inline-block",
-          background: "#D4845A", color: "#0F0F0F",
-          fontSize: 11, fontWeight: 700,
-          letterSpacing: 2, textTransform: "uppercase",
-          padding: "14px 28px", borderRadius: 3,
+        <a href="/" className="btn-gold" style={{
+          display: "inline-flex",
           textDecoration: "none",
-        }}>Volver a la tienda</a>
+          letterSpacing: 0,
+        }}>
+          Volver a la tienda
+        </a>
       </div>
     </div>
   );
